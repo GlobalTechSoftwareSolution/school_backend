@@ -1,0 +1,9 @@
+{
+  "include": ["school", "school_backend"],
+  "exclude": ["**/node_modules", "**/__pycache__", "**/migrations"],
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.10",
+  "pythonPlatform": "Windows",
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "warning"
+}
