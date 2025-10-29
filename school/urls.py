@@ -1,13 +1,15 @@
 from django.urls import path
 from . import views
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
+from .token_serializers import CustomTokenObtainPairView
 
 urlpatterns = [
     # Authentication
     path('signup/', views.register_user, name='signup'),
-    path('token/', TokenObtainPairView.as_view(), name='token'),
+    path('token/', CustomTokenObtainPairView.as_view(), name='token'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
-    path('login/', views.current_user, name='current-user'),
+    path('current-user/', views.current_user, name='current-user'),
+    path('login/', views.login_with_credentials, name='login'),
     
     # User Management
     path('users/', views.UserViewSet.as_view({'get': 'list', 'post': 'create'}), name='user-list'),

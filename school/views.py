@@ -50,6 +50,63 @@ def current_user(request):
     return Response(serializer.data)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def login_with_credentials(request):
+    """
+    Login with credentials even if you have a token.
+    Validates email, password, and role, then returns that user's details.
+    """
+    from django.contrib.auth import authenticate
+    
+    email = request.data.get('email')
+    password = request.data.get('password')
+    role = request.data.get('role')
+    
+    if not email or not password or not role:
+        return Response(
+            {'error': 'Email, password, and role are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Authenticate the provided credentials
+    user = authenticate(request, username=email, password=password)
+    
+    if not user:
+        return Response(
+            {'error': 'Invalid email or password'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    # Check if user is approved
+    if not user.is_approved:  # type: ignore[attr-defined]
+        return Response(
+            {'error': 'Your account is pending approval'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Check if user is active
+    if not user.is_active:
+        return Response(
+            {'error': 'Your account has been deactivated'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Check if role matches
+    if user.role != role:  # type: ignore[attr-defined]
+        return Response(
+            {'error': f"Invalid role. You are registered as '{user.role}', but provided '{role}'"},  # type: ignore[attr-defined]
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # All checks passed - return the user's details
+    serializer = UserSerializer(user)
+    return Response({
+        'message': f'Login successful as {role}',
+        'user': serializer.data
+    }, status=status.HTTP_200_OK)
+
+
 # ------------------- USER VIEWSET -------------------
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
