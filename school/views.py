@@ -41,7 +41,7 @@ def register_user(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def current_user(request):
     """
     Get current authenticated user details
@@ -51,7 +51,7 @@ def current_user(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def login_with_credentials(request):
     """
     Login with credentials even if you have a token.
@@ -111,7 +111,7 @@ def login_with_credentials(request):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['role', 'is_active', 'is_approved']
     search_fields = ['email', 'role']
@@ -138,7 +138,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['department_name', 'description']
     ordering_fields = ['department_name', 'created_at']
@@ -148,7 +148,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 class ClassViewSet(viewsets.ModelViewSet):
     queryset = Class.objects.all()
     serializer_class = ClassSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['class_name', 'section']
     ordering_fields = ['class_name', 'created_at']
@@ -158,7 +158,7 @@ class ClassViewSet(viewsets.ModelViewSet):
 class SubjectViewSet(viewsets.ModelViewSet):
     queryset = Subject.objects.all()
     serializer_class = SubjectSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['subject_name', 'subject_code']
     ordering_fields = ['subject_name', 'created_at']
@@ -167,7 +167,7 @@ class SubjectViewSet(viewsets.ModelViewSet):
 # ------------------- STUDENT VIEWSET -------------------
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['class_enrolled', 'gender', 'blood_group']
     search_fields = ['fullname', 'student_id', 'email__email']
@@ -192,7 +192,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 # ------------------- TEACHER VIEWSET -------------------
 class TeacherViewSet(viewsets.ModelViewSet):
     queryset = Teacher.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['department', 'gender', 'blood_group']
     search_fields = ['fullname', 'teacher_id', 'email__email', 'qualification']
@@ -218,7 +218,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
 class PrincipalViewSet(viewsets.ModelViewSet):
     queryset = Principal.objects.all()
     serializer_class = PrincipalSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email']
 
@@ -227,7 +227,7 @@ class PrincipalViewSet(viewsets.ModelViewSet):
 class ManagementViewSet(viewsets.ModelViewSet):
     queryset = Management.objects.all()
     serializer_class = ManagementSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]  # type: ignore[assignment]
     filterset_fields = ['department', 'designation']
     search_fields = ['fullname', 'designation', 'email__email']
@@ -237,7 +237,7 @@ class ManagementViewSet(viewsets.ModelViewSet):
 class AdminViewSet(viewsets.ModelViewSet):
     queryset = Admin.objects.all()
     serializer_class = AdminSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email']
 
@@ -246,7 +246,7 @@ class AdminViewSet(viewsets.ModelViewSet):
 class ParentViewSet(viewsets.ModelViewSet):
     queryset = Parent.objects.all()
     serializer_class = ParentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email', 'occupation']
 
@@ -254,7 +254,7 @@ class ParentViewSet(viewsets.ModelViewSet):
 # ------------------- ATTENDANCE VIEWSET -------------------
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['student', 'class_enrolled', 'status', 'date']
     search_fields = ['student__fullname', 'student__student_id']
@@ -280,7 +280,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 # ------------------- GRADE VIEWSET -------------------
 class GradeViewSet(viewsets.ModelViewSet):
     queryset = Grade.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['student', 'subject', 'teacher', 'exam_type']
     search_fields = ['student__fullname', 'student__student_id', 'subject__subject_name']
@@ -306,7 +306,7 @@ class GradeViewSet(viewsets.ModelViewSet):
 class FeeStructureViewSet(viewsets.ModelViewSet):
     queryset = FeeStructure.objects.all()
     serializer_class = FeeStructureSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]  # type: ignore[assignment]
     filterset_fields = ['class_level', 'fee_type', 'frequency']
     search_fields = ['fee_type', 'description']
@@ -325,7 +325,7 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
 # ------------------- FEE PAYMENT VIEWSET -------------------
 class FeePaymentViewSet(viewsets.ModelViewSet):
     queryset = FeePayment.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['student', 'fee_structure', 'payment_method', 'status']
     search_fields = ['student__fullname', 'student__student_id', 'transaction_id']
@@ -350,7 +350,7 @@ class FeePaymentViewSet(viewsets.ModelViewSet):
 # ------------------- TIMETABLE VIEWSET -------------------
 class TimetableViewSet(viewsets.ModelViewSet):
     queryset = Timetable.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['class_enrolled', 'subject', 'teacher', 'day_of_week']
     search_fields = ['class_enrolled__class_name', 'subject__subject_name', 'teacher__fullname']
@@ -390,7 +390,7 @@ class FormerMemberViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = FormerMember.objects.all()
     serializer_class = FormerMemberSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['role', 'gender', 'blood_group']
     search_fields = ['email', 'fullname', 'student_id', 'teacher_id', 'phone']

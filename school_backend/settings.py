@@ -137,13 +137,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom User Model
 AUTH_USER_MODEL = 'school.User'
 
-# REST Framework Configuration
+# REST Framework Configuration (public by default; tokens not required)
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': (),
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.AllowAny',
     ],
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
     'DATE_FORMAT': '%Y-%m-%d',
@@ -172,3 +170,15 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
+
+MINIO_STORAGE = {
+    "ENDPOINT": "minio.globaltechsoftwaresolutions.cloud:9000",
+    "ACCESS_KEY": "admin",
+    "SECRET_KEY": "admin12345",
+    "BUCKET_NAME": "school-media",
+    "USE_SSL": True,
+}
+BASE_BUCKET_URL = "https://minio.globaltechsoftwaresolutions.cloud:9000/school-media/"
+
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/chat/'
