@@ -8,14 +8,14 @@ urlpatterns = [
     path('signup/', views.register_user, name='signup'),
     path('token/', CustomTokenObtainPairView.as_view(), name='token'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
-    path('current-user/', views.current_user, name='current-user'),
+    path('check_token/', views.current_user, name='current-user'),
     path('login/', views.login_with_credentials, name='login'),
     
     # User Management
     path('users/', views.UserViewSet.as_view({'get': 'list', 'post': 'create'}), name='user-list'),
     path('users/<str:pk>/', views.UserViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='user-detail'),
     path('users/<str:pk>/approve/', views.UserViewSet.as_view({'post': 'approve'}), name='user-approve'),
-    path('users/<str:pk>/deactivate/', views.UserViewSet.as_view({'post': 'deactivate'}), name='user-deactivate'),
+    path('users/<str:pk>/reject/', views.UserViewSet.as_view({'post': 'deactivate'}), name='user-deactivate'),
     
     # Departments
     path('departments/', views.DepartmentViewSet.as_view({'get': 'list', 'post': 'create'}), name='department-list'),
@@ -64,18 +64,18 @@ urlpatterns = [
     path('grades/<int:pk>/', views.GradeViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='grade-detail'),
     
     # Fee Structures
-    path('fee-structures/', views.FeeStructureViewSet.as_view({'get': 'list', 'post': 'create'}), name='fee-structure-list'),
-    path('fee-structures/<int:pk>/', views.FeeStructureViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='fee-structure-detail'),
+    path('fee_structures/', views.FeeStructureViewSet.as_view({'get': 'list', 'post': 'create'}), name='fee-structure-list'),
+    path('fee_structures/<int:pk>/', views.FeeStructureViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='fee-structure-detail'),
     
     # Fee Payments
-    path('fee-payments/', views.FeePaymentViewSet.as_view({'get': 'list', 'post': 'create'}), name='fee-payment-list'),
-    path('fee-payments/<int:pk>/', views.FeePaymentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='fee-payment-detail'),
+    path('fee_payments/', views.FeePaymentViewSet.as_view({'get': 'list', 'post': 'create'}), name='fee-payment-list'),
+    path('fee_payments/<int:pk>/', views.FeePaymentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='fee-payment-detail'),
     
     # Timetable
     path('timetable/', views.TimetableViewSet.as_view({'get': 'list', 'post': 'create'}), name='timetable-list'),
     path('timetable/<int:pk>/', views.TimetableViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='timetable-detail'),
     
     # Former Members (Read-only)
-    path('former-members/', views.FormerMemberViewSet.as_view({'get': 'list'}), name='former-member-list'),
-    path('former-members/<str:pk>/', views.FormerMemberViewSet.as_view({'get': 'retrieve'}), name='former-member-detail'),
+    path('former_members/', views.FormerMemberViewSet.as_view({'get': 'list'}), name='former-member-list'),
+    path('former_members/<str:pk>/', views.FormerMemberViewSet.as_view({'get': 'retrieve'}), name='former-member-detail'),
 ]
