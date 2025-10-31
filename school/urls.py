@@ -78,4 +78,24 @@ urlpatterns = [
     # Former Members (Read-only)
     path('former_members/', views.FormerMemberViewSet.as_view({'get': 'list'}), name='former-member-list'),
     path('former_members/<str:pk>/', views.FormerMemberViewSet.as_view({'get': 'retrieve'}), name='former-member-detail'),
+
+    # Documents
+    path('documents/', views.DocumentViewSet.as_view({'get': 'list', 'post': 'create'}), name='document-list'),
+    path('documents/<int:pk>/', views.DocumentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='document-detail'),
+
+    # Notices
+    path('notices/', views.NoticeViewSet.as_view({'get': 'list', 'post': 'create'}), name='notice-list'),
+    path('notices/<int:pk>/', views.NoticeViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='notice-detail'),
+
+    # Issues
+    path('issues/', views.IssueViewSet.as_view({'get': 'list', 'post': 'create'}), name='issue-list'),
+    path('issues/<int:pk>/', views.IssueViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='issue-detail'),
+
+    # Holidays
+    path('holidays/', views.HolidayViewSet.as_view({'get': 'list', 'post': 'create'}), name='holiday-list'),
+    path('holidays/<int:pk>/', views.HolidayViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='holiday-detail'),
+
+    # Awards
+    path('awards/', views.AwardViewSet.as_view({'get': 'list', 'post': 'create'}), name='award-list'),
+    path('awards/<int:pk>/', views.AwardViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='award-detail'),
 ]

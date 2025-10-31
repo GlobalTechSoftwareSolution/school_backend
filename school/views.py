@@ -11,7 +11,7 @@ from minio import Minio
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Class, Subject, Attendance, Grade, FeeStructure,
-    FeePayment, Timetable, FormerMember
+    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer,
@@ -22,7 +22,8 @@ from .serializers import (
     AttendanceSerializer, AttendanceCreateSerializer,
     GradeSerializer, GradeCreateSerializer,
     FeeStructureSerializer, FeePaymentSerializer, FeePaymentCreateSerializer,
-    TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer
+    TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer,
+    DocumentSerializer, NoticeSerializer, IssueSerializer, HolidaySerializer, AwardSerializer
 )
 
 
@@ -642,3 +643,58 @@ class FormerMemberViewSet(viewsets.ReadOnlyModelViewSet):
         member.save()
         serializer = self.get_serializer(member)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ------------------- DOCUMENT VIEWSET -------------------
+class DocumentViewSet(viewsets.ModelViewSet):
+    queryset = Document.objects.all()
+    serializer_class = DocumentSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['email']
+    search_fields = ['email__email']
+    ordering_fields = ['uploaded_at']
+
+
+# ------------------- NOTICE VIEWSET -------------------
+class NoticeViewSet(viewsets.ModelViewSet):
+    queryset = Notice.objects.all()
+    serializer_class = NoticeSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['email', 'important']
+    search_fields = ['title', 'message', 'email__email']
+    ordering_fields = ['posted_date', 'important']
+
+
+# ------------------- ISSUE VIEWSET -------------------
+class IssueViewSet(viewsets.ModelViewSet):
+    queryset = Issue.objects.all()
+    serializer_class = IssueSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['status', 'priority', 'raised_by', 'raised_to']
+    search_fields = ['subject', 'description', 'raised_by__email', 'raised_to__email']
+    ordering_fields = ['created_at', 'updated_at', 'priority', 'status']
+
+
+# ------------------- HOLIDAY VIEWSET -------------------
+class HolidayViewSet(viewsets.ModelViewSet):
+    queryset = Holiday.objects.all()
+    serializer_class = HolidaySerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['country', 'year', 'month', 'type']
+    search_fields = ['name', 'type', 'country']
+    ordering_fields = ['date', 'name']
+
+
+# ------------------- AWARD VIEWSET -------------------
+class AwardViewSet(viewsets.ModelViewSet):
+    queryset = Award.objects.all()
+    serializer_class = AwardSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['email']
+    search_fields = ['title', 'description', 'email__email']
+    ordering_fields = ['created_at', 'title']

@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Class, Subject, Attendance, Grade, FeeStructure,
-    FeePayment, Timetable, FormerMember
+    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award
 )
 
 UserModel = get_user_model()
@@ -215,3 +215,38 @@ class FormerMemberSerializer(serializers.ModelSerializer):
         model = FormerMember
         fields = '__all__'
         read_only_fields = ['left_date']
+
+
+# ------------------- DOCUMENT -------------------
+class DocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Document
+        fields = '__all__'
+
+
+# ------------------- NOTICE -------------------
+class NoticeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notice
+        fields = '__all__'
+
+
+# ------------------- ISSUE -------------------
+class IssueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Issue
+        fields = '__all__'
+
+
+# ------------------- HOLIDAY -------------------
+class HolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Holiday
+        fields = '__all__'
+
+
+# ------------------- AWARD -------------------
+class AwardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Award
+        fields = '__all__'
