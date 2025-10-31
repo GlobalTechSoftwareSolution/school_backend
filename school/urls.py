@@ -33,6 +33,7 @@ urlpatterns = [
     path('students/', views.StudentViewSet.as_view({'get': 'list', 'post': 'create'}), name='student-list'),
     path('students/<str:pk>/', views.StudentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='student-detail'),
     path('students/by_class/', views.StudentViewSet.as_view({'get': 'by_class'}), name='student-by-class'),
+    path('students/<str:pk>/upload_profile/', views.StudentViewSet.as_view({'post': 'upload_profile'}), name='student-upload-profile'),
     
     # Teachers
     path('teachers/', views.TeacherViewSet.as_view({'get': 'list', 'post': 'create'}), name='teacher-list'),

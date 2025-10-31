@@ -2,8 +2,11 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.parsers import MultiPartParser, FormParser
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
+from django.conf import settings
+from minio import Minio
 
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
@@ -21,6 +24,9 @@ from .serializers import (
     FeeStructureSerializer, FeePaymentSerializer, FeePaymentCreateSerializer,
     TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer
 )
+
+
+ 
 
 
 # ------------------- USER REGISTRATION -------------------
@@ -168,6 +174,7 @@ class SubjectViewSet(viewsets.ModelViewSet):
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
     permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['class_enrolled', 'gender', 'blood_group']
     search_fields = ['fullname', 'student_id', 'email__email']
@@ -187,6 +194,67 @@ class StudentViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(students, many=True)
             return Response(serializer.data)
         return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def upload_profile(self, request, pk=None):
+        student = self.get_object()
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'error': 'file parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        identifier = student.student_id or student.email.email.split('@')[0]
+        object_name = f"images/{identifier}/profile.jpg"
+        if Minio is None:
+            return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        cfg = settings.MINIO_STORAGE
+        client = Minio(
+            cfg['ENDPOINT'],
+            access_key=cfg['ACCESS_KEY'],
+            secret_key=cfg['SECRET_KEY'],
+            secure=cfg.get('USE_SSL', True),
+        )
+        bucket = cfg['BUCKET_NAME']
+        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        url = f"{base}{object_name}"
+        student.profile_picture = url
+        student.save()
+        serializer = self.get_serializer(student)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def _upload_and_set_profile(self, student, file):
+        if Minio is None:
+            return
+        identifier = student.student_id or student.email.email.split('@')[0]
+        object_name = f"images/{identifier}/profile.jpg"
+        cfg = settings.MINIO_STORAGE
+        client = Minio(
+            cfg['ENDPOINT'],
+            access_key=cfg['ACCESS_KEY'],
+            secret_key=cfg['SECRET_KEY'],
+            secure=cfg.get('USE_SSL', True),
+        )
+        bucket = cfg['BUCKET_NAME']
+        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        url = f"{base}{object_name}"
+        student.profile_picture = url
+        student.save()
+
+    def perform_create(self, serializer):
+        student = serializer.save()
+        file = self.request.FILES.get('profile_picture') or self.request.FILES.get('file')
+        if file:
+            self._upload_and_set_profile(student, file)
+
+    def perform_update(self, serializer):
+        student = serializer.save()
+        file = self.request.FILES.get('profile_picture') or self.request.FILES.get('file')
+        if file:
+            self._upload_and_set_profile(student, file)
 
 
 # ------------------- TEACHER VIEWSET -------------------
