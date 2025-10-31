@@ -671,10 +671,11 @@ def _verify_location(latitude: float, longitude: float, radius_meters: int | Non
 @permission_classes([AllowAny])
 def school_attendance_view(request):
     """Mark student attendance by matching face image and verifying location."""
-    if face_recognition is None:
+    # Only require face_recognition if an image is provided; allow deterministic marking via student_email otherwise
+    if face_recognition is None and (request.FILES.get('image') or request.FILES.get('file')):
         return JsonResponse({
             'status': 'error',
-            'message': 'face_recognition package not installed. Please install dependencies.'
+            'message': 'face_recognition package not installed. Please install dependencies or provide student_email without an image.'
         }, status=500)
 
     lat = request.POST.get('latitude')
@@ -688,46 +689,68 @@ def school_attendance_view(request):
         return JsonResponse({'status': 'fail', 'message': 'Invalid latitude or longitude'}, status=400)
 
     uploaded_file = request.FILES.get('image') or request.FILES.get('file')
-    if not uploaded_file:
-        return JsonResponse({'status': 'fail', 'message': 'No image provided'}, status=400)
+    forced_email = request.POST.get('student_email')
+    if not uploaded_file and not forced_email:
+        return JsonResponse({'status': 'fail', 'message': 'Provide either student_email or an image'}, status=400)
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        for chunk in uploaded_file.chunks():
-            tmp.write(chunk)
-        tmp_path = tmp.name
+    tmp_path = None
+    if uploaded_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            for chunk in uploaded_file.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
 
     try:
-        uploaded_img = face_recognition.load_image_file(tmp_path)
-        uploaded_encodings = face_recognition.face_encodings(uploaded_img)
-        if not uploaded_encodings:
-            return JsonResponse({'status': 'fail', 'message': 'No face detected'}, status=400)
-        uploaded_encoding = uploaded_encodings[0]
+        uploaded_encoding = None
+        if tmp_path:
+            fr = face_recognition
+            assert fr is not None  # ensured above when image is provided
+            uploaded_img = fr.load_image_file(tmp_path)
+            uploaded_encodings = fr.face_encodings(uploaded_img)
+            if not uploaded_encodings:
+                return JsonResponse({'status': 'fail', 'message': 'No face detected'}, status=400)
+            uploaded_encoding = uploaded_encodings[0]
 
-        # Iterate over students with profile images
+        # Determine target student
         matched_student = None
         from .models import Student, Attendance  # local import to avoid cycles
-        candidates = Student.objects.exclude(profile_picture__isnull=True).exclude(profile_picture__exact='')
-        for student in candidates:
+        if forced_email:
             try:
-                resp = requests.get(student.profile_picture, timeout=10)
-                if resp.status_code != 200:
+                matched_student = Student.objects.get(email=forced_email)
+            except Student.DoesNotExist:
+                return JsonResponse({'status': 'fail', 'message': f'Student not found: {forced_email}'}, status=404)
+        elif uploaded_encoding is not None:
+            # Iterate over students with profile images and pick the best match by distance
+            best_student = None
+            best_distance = None
+            candidates = Student.objects.exclude(profile_picture__isnull=True).exclude(profile_picture__exact='')
+            for student in candidates:
+                try:
+                    resp = requests.get(student.profile_picture, timeout=10)
+                    if resp.status_code != 200:
+                        continue
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as s_tmp:
+                        s_tmp.write(resp.content)
+                        s_path = s_tmp.name
+                    fr = face_recognition
+                    assert fr is not None
+                    s_img = fr.load_image_file(s_path)
+                    s_encs = fr.face_encodings(s_img)
+                    os.remove(s_path)
+                    if not s_encs:
+                        continue
+                    # Compute distance and keep the closest under threshold
+                    distances = fr.face_distance([s_encs[0]], uploaded_encoding)
+                    distance_val = float(distances[0])
+                    # Stricter threshold to avoid random mismatches
+                    if distance_val <= 0.45 and (best_distance is None or distance_val < best_distance):
+                        best_distance = distance_val
+                        best_student = student
+                except Exception:
                     continue
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as s_tmp:
-                    s_tmp.write(resp.content)
-                    s_path = s_tmp.name
-                s_img = face_recognition.load_image_file(s_path)
-                s_encs = face_recognition.face_encodings(s_img)
-                os.remove(s_path)
-                if not s_encs:
-                    continue
-                match = face_recognition.compare_faces([s_encs[0]], uploaded_encoding, tolerance=0.5)
-                if match and match[0]:
-                    matched_student = student
-                    break
-            except Exception:
-                continue
+            matched_student = best_student
 
-        if not matched_student:
+        if matched_student is None:
             return JsonResponse({'status': 'fail', 'message': 'No matching student found'}, status=404)
 
         # Verify location proximity
@@ -738,25 +761,34 @@ def school_attendance_view(request):
                 'message': f'Too far from office ({distance_m:.2f}m). Must be within {LOCATION_RADIUS_METERS}m.'
             }, status=400)
 
-        # Mark attendance for today
-        today = timezone.localdate()
+        # Mark attendance for today (works regardless of USE_TZ setting)
+        today = timezone.now().date()
         # Determine actor role (who is marking)
         actor_role = getattr(getattr(request, 'user', None), 'role', None) or 'Admin'
+        # Allow overriding status and remarks
+        status_param = request.POST.get('status')
+        if status_param not in (None, 'Present', 'Absent'):
+            status_param = None
+        remarks_param = request.POST.get('remarks')
+
         att, created = Attendance.objects.get_or_create(
             student=matched_student,
             date=today,
             defaults={
                 'class_name': matched_student.class_name,
-                'status': 'Present',
+                'status': status_param or 'Present',
                 'marked_by_role': actor_role,
+                'remarks': remarks_param,
             }
         )
         if not created:
             # Update status/role if already exists
-            att.status = 'Present'
+            att.status = status_param or 'Present'
             att.marked_by_role = actor_role
             if matched_student.class_name:
                 att.class_name = matched_student.class_name
+            if remarks_param is not None:
+                att.remarks = remarks_param
             att.save()
 
         return JsonResponse({
@@ -769,7 +801,8 @@ def school_attendance_view(request):
         })
     finally:
         try:
-            os.remove(tmp_path)
+            if tmp_path:
+                os.remove(tmp_path)
         except Exception:
             pass
 
