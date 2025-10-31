@@ -437,6 +437,18 @@ class Document(models.Model):
         return f"Documents for {self.email.email}"
 
 
+# ------------------- AWARD -------------------
+class Award(models.Model):
+    email = models.ForeignKey(User, on_delete=models.CASCADE, to_field='email', related_name='awards')
+    title = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    photo = models.URLField(max_length=500, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.email}"
+
+
 # ------------------- NOTICE -------------------
 class Notice(models.Model):
     id = models.AutoField(primary_key=True)

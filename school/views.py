@@ -26,6 +26,44 @@ from .serializers import (
 )
 
 
+def _minio_client_global():
+    if Minio is None:
+        return None
+    cfg = settings.MINIO_STORAGE
+    return Minio(
+        cfg['ENDPOINT'],
+        access_key=cfg['ACCESS_KEY'],
+        secret_key=cfg['SECRET_KEY'],
+        secure=cfg.get('USE_SSL', True),
+    )
+
+def _object_name_for_member_global(member, fallback_email: str | None = None, fallback_id: str | None = None) -> str:
+    identifier = None
+    for attr in ('student_id', 'teacher_id'):
+        if hasattr(member, attr) and getattr(member, attr):
+            identifier = getattr(member, attr)
+            break
+    if not identifier:
+        if hasattr(member, 'email'):
+            email_val = getattr(member.email, 'email', None) if hasattr(member.email, 'email') else member.email
+            if email_val:
+                identifier = str(email_val).split('@')[0]
+    if not identifier:
+        identifier = (fallback_id or (fallback_email.split('@')[0] if fallback_email else 'unknown'))
+    return f"images/{identifier}/profile.jpg"
+
+def _upload_file_to_minio_global(member, file, fallback_email: str | None = None, fallback_id: str | None = None):
+    client = _minio_client_global()
+    if client is None:
+        return None
+    bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+    object_name = _object_name_for_member_global(member, fallback_email, fallback_id)
+    client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+    base = settings.BASE_BUCKET_URL
+    if not base.endswith('/'):
+        base += '/'
+    return f"{base}{object_name}"
+
  
 
 
@@ -195,12 +233,12 @@ class StudentViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['patch'])
     def upload_profile(self, request, pk=None):
         student = self.get_object()
-        file = request.FILES.get('file')
+        file = request.FILES.get('profile_picture')
         if not file:
-            return Response({'error': 'file parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'profile_picture parameter required'}, status=status.HTTP_400_BAD_REQUEST)
         url = self._upload_file_to_minio(student, file)
         if url is None:
             return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -304,6 +342,25 @@ class TeacherViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         return Response({'error': 'department_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        if file:
+            url = _upload_file_to_minio_global(instance, file)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
 
 # ------------------- PRINCIPAL VIEWSET -------------------
 class PrincipalViewSet(viewsets.ModelViewSet):
@@ -312,6 +369,25 @@ class PrincipalViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email']
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        if file:
+            url = _upload_file_to_minio_global(instance, file)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
 
 # ------------------- MANAGEMENT VIEWSET -------------------
@@ -323,6 +399,25 @@ class ManagementViewSet(viewsets.ModelViewSet):
     filterset_fields = ['department', 'designation']
     search_fields = ['fullname', 'designation', 'email__email']
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        if file:
+            url = _upload_file_to_minio_global(instance, file)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
 
 # ------------------- ADMIN VIEWSET -------------------
 class AdminViewSet(viewsets.ModelViewSet):
@@ -332,6 +427,24 @@ class AdminViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email']
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        if file:
+            url = _upload_file_to_minio_global(instance, file)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
 # ------------------- PARENT VIEWSET -------------------
 class ParentViewSet(viewsets.ModelViewSet):
@@ -340,6 +453,25 @@ class ParentViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email', 'occupation']
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        if file:
+            url = _upload_file_to_minio_global(instance, file)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
 
 # ------------------- ATTENDANCE VIEWSET -------------------
@@ -496,3 +628,17 @@ class FormerMemberViewSet(viewsets.ReadOnlyModelViewSet):
             serializer = self.get_serializer(members, many=True)
             return Response(serializer.data)
         return Response({'error': 'role parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['patch'])
+    def upload_profile(self, request, pk=None):
+        member = self.get_object()
+        file = request.FILES.get('profile_picture')
+        if not file:
+            return Response({'error': 'profile_picture parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        url = _upload_file_to_minio_global(member, file)
+        if url is None:
+            return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        member.profile_picture = url
+        member.save()
+        serializer = self.get_serializer(member)
+        return Response(serializer.data, status=status.HTTP_200_OK)
