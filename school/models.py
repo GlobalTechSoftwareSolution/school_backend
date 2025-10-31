@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.utils import timezone
+from datetime import datetime
 
 
 # ------------------- USER MANAGER -------------------
@@ -410,3 +412,95 @@ class FormerMember(models.Model):
     def __str__(self):
         return f"{self.email} - {self.role} (Left: {self.left_date.strftime('%Y-%m-%d')})"
 
+
+# ------------------- DOCUMENT -------------------
+class Document(models.Model):
+    email = models.OneToOneField(User, on_delete=models.CASCADE, to_field='email', related_name='document')
+    tenth = models.URLField(null=True, blank=True)
+    twelth = models.URLField(null=True, blank=True)
+    degree = models.URLField(null=True, blank=True)
+    masters = models.URLField(null=True, blank=True)
+    marks_card = models.URLField(null=True, blank=True)
+    certificates = models.URLField(null=True, blank=True)
+    award = models.URLField(null=True, blank=True)
+    resume = models.URLField(null=True, blank=True)
+    id_proof = models.URLField(null=True, blank=True)
+    appointment_letter = models.URLField(null=True, blank=True)
+    offer_letter = models.URLField(null=True, blank=True)
+    releaving_letter = models.URLField(null=True, blank=True)
+    resignation_letter = models.URLField(null=True, blank=True)
+    achievement_crt = models.URLField(null=True, blank=True)
+    bonafide_crt = models.URLField(null=True, blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"Documents for {self.email.email}"
+
+
+# ------------------- NOTICE -------------------
+class Notice(models.Model):
+    id = models.AutoField(primary_key=True)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    email = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='notices')
+    posted_date = models.DateTimeField(default=timezone.now)
+    valid_until = models.DateTimeField(null=True, blank=True)
+    important = models.BooleanField(default=False)
+    attachment = models.FileField(upload_to='notices/', null=True, blank=True)
+    notice_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='notices_by')
+    notice_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='notices_to')
+
+    class Meta:
+        ordering = ['-posted_date']
+
+    def __str__(self) -> str:
+        return str(self.title)
+
+
+# ------------------- TICKET (Issues DB) -------------------
+class Issue(models.Model):
+    STATUS_CHOICES = [('Open','Open'),('In Progress','In Progress'),('Closed','Closed')]
+    PRIORITY_CHOICES = [('Low','Low'),('Medium','Medium'),('High','High'),('Urgent','Urgent')]
+
+    subject = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Open')
+    description = models.TextField(blank=True, null=True)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='Medium')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    closed_description = models.TextField(blank=True, null=True)
+    raised_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='tickets_assigned_by')
+    raised_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='tickets_assigned_to')
+    closed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='tickets_closed_by')
+    closed_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='tickets_closed_to')
+
+    class Meta:
+        ordering = ['-created_at']
+        db_table = 'issues'
+
+    def __str__(self):
+        return f"{self.subject} - {self.status}"
+
+
+# ------------------- HOLIDAY -------------------
+class Holiday(models.Model):
+    name = models.CharField(max_length=255)
+    date = models.DateField()
+    type = models.CharField(max_length=100)
+    country = models.CharField(max_length=100, default="India")
+    year = models.PositiveIntegerField()
+    month = models.PositiveIntegerField()
+    weekday = models.CharField(max_length=10, blank=True)
+
+    class Meta:
+        unique_together = ('date', 'country')
+        ordering = ['date']
+
+    def save(self, *args, **kwargs):
+        if isinstance(self.date, str):
+            self.date = datetime.strptime(self.date, '%Y-%m-%d').date()
+        self.weekday = self.date.strftime('%A')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} ({self.date} - {self.weekday})"

@@ -201,60 +201,83 @@ class StudentViewSet(viewsets.ModelViewSet):
         file = request.FILES.get('file')
         if not file:
             return Response({'error': 'file parameter required'}, status=status.HTTP_400_BAD_REQUEST)
-        identifier = student.student_id or student.email.email.split('@')[0]
-        object_name = f"images/{identifier}/profile.jpg"
-        if Minio is None:
+        url = self._upload_file_to_minio(student, file)
+        if url is None:
             return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        cfg = settings.MINIO_STORAGE
-        client = Minio(
-            cfg['ENDPOINT'],
-            access_key=cfg['ACCESS_KEY'],
-            secret_key=cfg['SECRET_KEY'],
-            secure=cfg.get('USE_SSL', True),
-        )
-        bucket = cfg['BUCKET_NAME']
-        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
-        base = settings.BASE_BUCKET_URL
-        if not base.endswith('/'):
-            base += '/'
-        url = f"{base}{object_name}"
         student.profile_picture = url
         student.save()
         serializer = self.get_serializer(student)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def _upload_and_set_profile(self, student, file):
+    def _minio_client(self):
         if Minio is None:
-            return
-        identifier = student.student_id or student.email.email.split('@')[0]
-        object_name = f"images/{identifier}/profile.jpg"
+            return None
         cfg = settings.MINIO_STORAGE
-        client = Minio(
+        return Minio(
             cfg['ENDPOINT'],
             access_key=cfg['ACCESS_KEY'],
             secret_key=cfg['SECRET_KEY'],
             secure=cfg.get('USE_SSL', True),
         )
-        bucket = cfg['BUCKET_NAME']
+
+    def _object_name_for_student(self, student, fallback_email: str | None = None, fallback_student_id: str | None = None) -> str:
+        identifier = None
+        if hasattr(student, 'student_id') and student.student_id:
+            identifier = student.student_id
+        elif hasattr(student, 'email') and hasattr(student.email, 'email'):
+            identifier = student.email.email.split('@')[0]
+        else:
+            identifier = (fallback_student_id or (fallback_email.split('@')[0] if fallback_email else 'unknown'))
+        return f"images/{identifier}/profile.jpg"
+
+    def _upload_file_to_minio(self, student, file, fallback_email: str | None = None, fallback_student_id: str | None = None):
+        client = self._minio_client()
+        if client is None:
+            return None
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        object_name = self._object_name_for_student(student, fallback_email, fallback_student_id)
         client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
         base = settings.BASE_BUCKET_URL
         if not base.endswith('/'):
             base += '/'
-        url = f"{base}{object_name}"
-        student.profile_picture = url
-        student.save()
+        return f"{base}{object_name}"
 
-    def perform_create(self, serializer):
-        student = serializer.save()
-        file = self.request.FILES.get('profile_picture') or self.request.FILES.get('file')
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
         if file:
-            self._upload_and_set_profile(student, file)
+            url = self._upload_file_to_minio(instance, file)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
-    def perform_update(self, serializer):
-        student = serializer.save()
-        file = self.request.FILES.get('profile_picture') or self.request.FILES.get('file')
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        # For create, we may not have a Student instance yet; use fallbacks from request data
+        fallback_email = data.get('email')
+        fallback_student_id = data.get('student_id')
         if file:
-            self._upload_and_set_profile(student, file)
+            # No Student instance yet; rely on fallback values for object path
+            url = self._upload_file_to_minio(None, file, fallback_email=fallback_email, fallback_student_id=fallback_student_id)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 # ------------------- TEACHER VIEWSET -------------------
