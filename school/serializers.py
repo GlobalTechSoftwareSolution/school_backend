@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
-    Department, Class, Subject, Attendance, Grade, FeeStructure,
+    Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award
 )
 
@@ -47,13 +47,6 @@ class DepartmentSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-# ------------------- CLASS SERIALIZER -------------------
-class ClassSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Class
-        fields = '__all__'
-
-
 # ------------------- SUBJECT SERIALIZER -------------------
 class SubjectSerializer(serializers.ModelSerializer):
     class Meta:
@@ -64,7 +57,7 @@ class SubjectSerializer(serializers.ModelSerializer):
 # ------------------- STUDENT SERIALIZERS -------------------
 class StudentSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='email', read_only=True)
-    class_name = serializers.CharField(source='class_enrolled.class_name', read_only=True)
+    # class_name and section are direct fields now
     parent_name = serializers.CharField(source='parent.fullname', read_only=True, allow_null=True)
 
     class Meta:
@@ -136,7 +129,7 @@ class ParentSerializer(serializers.ModelSerializer):
 # ------------------- ATTENDANCE SERIALIZERS -------------------
 class AttendanceSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.fullname', read_only=True)
-    class_name = serializers.CharField(source='class_enrolled.class_name', read_only=True)
+    # class_name is a direct field now
 
     class Meta:
         model = Attendance
@@ -169,7 +162,7 @@ class GradeCreateSerializer(serializers.ModelSerializer):
 
 # ------------------- FEE STRUCTURE SERIALIZER -------------------
 class FeeStructureSerializer(serializers.ModelSerializer):
-    class_name = serializers.CharField(source='class_level.class_name', read_only=True)
+    # class_name is a direct field now
 
     class Meta:
         model = FeeStructure
@@ -194,7 +187,7 @@ class FeePaymentCreateSerializer(serializers.ModelSerializer):
 
 # ------------------- TIMETABLE SERIALIZERS -------------------
 class TimetableSerializer(serializers.ModelSerializer):
-    class_name = serializers.CharField(source='class_enrolled.class_name', read_only=True)
+    # class_name is a direct field now
     subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
     teacher_name = serializers.CharField(source='teacher.fullname', read_only=True, allow_null=True)
 

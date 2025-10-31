@@ -73,18 +73,7 @@ class Department(models.Model):
 
 
 # ------------------- CLASS/GRADE -------------------
-class Class(models.Model):
-    class_name = models.CharField(max_length=50, unique=True)
-    section = models.CharField(max_length=10, blank=True, null=True)
-    description = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name_plural = "Classes"
-
-    def __str__(self):
-        return f"{self.class_name} {self.section if self.section else ''}".strip()
+# Removed discrete Class model; using string fields on Student/FeeStructure/Timetable
 
 
 # ------------------- SUBJECT -------------------
@@ -108,7 +97,8 @@ class Student(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=20, null=True, blank=True)
     admission_date = models.DateField(null=True, blank=True)
-    class_enrolled = models.ForeignKey(Class, on_delete=models.SET_NULL, null=True, blank=True, related_name='students')
+    class_name = models.CharField(max_length=50, null=True, blank=True)
+    section = models.CharField(max_length=10, null=True, blank=True)
     parent = models.ForeignKey('Parent', on_delete=models.SET_NULL, null=True, blank=True, related_name='children', to_field='email')
     profile_picture = models.URLField(null=True, blank=True)
     residential_address = models.TextField(null=True, blank=True)
@@ -234,12 +224,19 @@ class Parent(models.Model):
 # ------------------- ATTENDANCE -------------------
 class Attendance(models.Model):
     student: Student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='attendance_records')  # type: ignore[assignment]
-    class_enrolled: Class = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='attendance_records')  # type: ignore[assignment]
+    class_name = models.CharField(max_length=50, null=True, blank=True)
     date = models.DateField()
     status = models.CharField(max_length=20, choices=[
         ('Present', 'Present'),
         ('Absent', 'Absent'),
     ])
+    marked_by_role = models.CharField(max_length=20, choices=[
+        ('Student', 'Student'),
+        ('Teacher', 'Teacher'),
+        ('Principal', 'Principal'),
+        ('Management', 'Management'),
+        ('Admin', 'Admin'),
+    ], default='Admin')
     remarks = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -282,7 +279,7 @@ class Grade(models.Model):
 
 # ------------------- FEE STRUCTURE -------------------
 class FeeStructure(models.Model):
-    class_level = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='fee_structures')
+    class_name = models.CharField(max_length=50)
     fee_type = models.CharField(max_length=100, choices=[
         ('Tuition', 'Tuition Fee'),
         ('Transport', 'Transport Fee'),
@@ -303,7 +300,7 @@ class FeeStructure(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.class_level} - {self.fee_type} - {self.amount}"
+        return f"{self.class_name} - {self.fee_type} - {self.amount}"
 
 
 # ------------------- FEE PAYMENT -------------------
@@ -335,7 +332,7 @@ class FeePayment(models.Model):
 
 # ------------------- TIMETABLE -------------------
 class Timetable(models.Model):
-    class_enrolled: Class = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='timetable_entries')  # type: ignore[assignment]
+    class_name = models.CharField(max_length=50)
     subject: Subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='timetable_entries')  # type: ignore[assignment]
     teacher: Teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, to_field='email', related_name='timetable_entries')  # type: ignore[assignment]
     day_of_week = models.CharField(max_length=20, choices=[
@@ -356,7 +353,7 @@ class Timetable(models.Model):
         ordering = ['day_of_week', 'start_time']
 
     def __str__(self):
-        return f"{self.class_enrolled} - {self.subject.subject_name} - {self.day_of_week} {self.start_time}-{self.end_time}"
+        return f"{self.class_name} - {self.subject.subject_name} - {self.day_of_week} {self.start_time}-{self.end_time}"
 
 
 # ------------------- FORMER MEMBER (BACKUP) -------------------
@@ -488,7 +485,7 @@ class Issue(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        db_table = 'issues'
+        db_table = 'school_issues'
 
     def __str__(self):
         return f"{self.subject} - {self.status}"

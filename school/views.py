@@ -2,15 +2,27 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from minio import Minio
+from django.utils import timezone
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+import os
+import tempfile
+import requests
+import pytz
+from geopy.distance import geodesic
+try:
+    import face_recognition
+except Exception:  # pragma: no cover
+    face_recognition = None
 
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
-    Department, Class, Subject, Attendance, Grade, FeeStructure,
+    Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award
 )
 from .serializers import (
@@ -18,7 +30,7 @@ from .serializers import (
     StudentSerializer, StudentCreateSerializer,
     TeacherSerializer, TeacherCreateSerializer,
     PrincipalSerializer, ManagementSerializer, AdminSerializer, ParentSerializer,
-    DepartmentSerializer, ClassSerializer, SubjectSerializer,
+    DepartmentSerializer, SubjectSerializer,
     AttendanceSerializer, AttendanceCreateSerializer,
     GradeSerializer, GradeCreateSerializer,
     FeeStructureSerializer, FeePaymentSerializer, FeePaymentCreateSerializer,
@@ -189,16 +201,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     ordering_fields = ['department_name', 'created_at']
 
 
-# ------------------- CLASS VIEWSET -------------------
-class ClassViewSet(viewsets.ModelViewSet):
-    queryset = Class.objects.all()
-    serializer_class = ClassSerializer
-    permission_classes = [AllowAny]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['class_name', 'section']
-    ordering_fields = ['class_name', 'created_at']
-
-
 # ------------------- SUBJECT VIEWSET -------------------
 class SubjectViewSet(viewsets.ModelViewSet):
     queryset = Subject.objects.all()
@@ -213,9 +215,9 @@ class SubjectViewSet(viewsets.ModelViewSet):
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
     permission_classes = [AllowAny]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_enrolled', 'gender', 'blood_group']
+    filterset_fields = ['class_name', 'section', 'gender', 'blood_group']
     search_fields = ['fullname', 'student_id', 'email__email']
     ordering_fields = ['fullname', 'admission_date']
 
@@ -226,13 +228,16 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def by_class(self, request):
-        """Get students by class"""
-        class_id = request.query_params.get('class_id')
-        if class_id:
-            students = self.queryset.filter(class_enrolled_id=class_id)  # type: ignore[union-attr]
-            serializer = self.get_serializer(students, many=True)
+        """Get students by class name (and optional section)."""
+        class_name = request.query_params.get('class_name')
+        section = request.query_params.get('section')
+        if class_name:
+            qs = self.get_queryset().filter(class_name=class_name)
+            if section:
+                qs = qs.filter(section=section)
+            serializer = self.get_serializer(qs, many=True)
             return Response(serializer.data)
-        return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'class_name parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['patch'])
     def upload_profile(self, request, pk=None):
@@ -338,7 +343,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
         """Get teachers by department"""
         dept_id = request.query_params.get('department_id')
         if dept_id:
-            teachers = self.queryset.filter(department_id=dept_id)  # type: ignore[union-attr]
+            teachers = self.get_queryset().filter(department_id=dept_id)  # type: ignore[union-attr]
             serializer = self.get_serializer(teachers, many=True)
             return Response(serializer.data)
         return Response({'error': 'department_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -480,7 +485,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.all()
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['student', 'class_enrolled', 'status', 'date']
+    filterset_fields = ['student', 'class_name', 'status', 'date']
     search_fields = ['student__fullname', 'student__student_id']
     ordering_fields = ['date', 'created_at']
 
@@ -495,7 +500,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         if start_date and end_date:
-            attendance = self.queryset.filter(date__range=[start_date, end_date])  # type: ignore[union-attr]
+            attendance = self.get_queryset().filter(date__range=[start_date, end_date])  # type: ignore[union-attr]
             serializer = self.get_serializer(attendance, many=True)
             return Response(serializer.data)
         return Response({'error': 'start_date and end_date parameters required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -520,7 +525,7 @@ class GradeViewSet(viewsets.ModelViewSet):
         """Get grade report for a specific student"""
         student_email = request.query_params.get('student_email')
         if student_email:
-            grades = self.queryset.filter(student__email=student_email)  # type: ignore[union-attr]
+            grades = self.get_queryset().filter(student__email=student_email)  # type: ignore[union-attr]
             serializer = self.get_serializer(grades, many=True)
             return Response(serializer.data)
         return Response({'error': 'student_email parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -540,7 +545,7 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
         """Get fee structure by class"""
         class_id = request.query_params.get('class_id')
         if class_id:
-            fees = self.queryset.filter(class_level_id=class_id)  # type: ignore[union-attr]
+            fees = self.get_queryset().filter(class_level_id=class_id)  # type: ignore[union-attr]
             serializer = self.get_serializer(fees, many=True)
             return Response(serializer.data)
         return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -565,7 +570,7 @@ class FeePaymentViewSet(viewsets.ModelViewSet):
         """Get payment history for a specific student"""
         student_email = request.query_params.get('student_email')
         if student_email:
-            payments = self.queryset.filter(student__email=student_email)  # type: ignore[union-attr]
+            payments = self.get_queryset().filter(student__email=student_email)  # type: ignore[union-attr]
             serializer = self.get_serializer(payments, many=True)
             return Response(serializer.data)
         return Response({'error': 'student_email parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -576,8 +581,8 @@ class TimetableViewSet(viewsets.ModelViewSet):
     queryset = Timetable.objects.all()
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_enrolled', 'subject', 'teacher', 'day_of_week']
-    search_fields = ['class_enrolled__class_name', 'subject__subject_name', 'teacher__fullname']
+    filterset_fields = ['class_name', 'subject', 'teacher', 'day_of_week']
+    search_fields = ['class_name', 'subject__subject_name', 'teacher__fullname']
     ordering_fields = ['day_of_week', 'start_time']
 
     def get_serializer_class(self):
@@ -587,20 +592,20 @@ class TimetableViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def by_class(self, request):
-        """Get timetable by class"""
-        class_id = request.query_params.get('class_id')
-        if class_id:
-            timetable = self.queryset.filter(class_enrolled_id=class_id)  # type: ignore[union-attr]
+        """Get timetable by class name"""
+        class_name = request.query_params.get('class_name')
+        if class_name:
+            timetable = self.get_queryset().filter(class_name=class_name)
             serializer = self.get_serializer(timetable, many=True)
             return Response(serializer.data)
-        return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'class_name parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'])
     def by_teacher(self, request):
         """Get timetable by teacher"""
         teacher_email = request.query_params.get('teacher_email')
         if teacher_email:
-            timetable = self.queryset.filter(teacher__email=teacher_email)  # type: ignore[union-attr]
+            timetable = self.get_queryset().filter(teacher__email=teacher_email)  # type: ignore[union-attr]
             serializer = self.get_serializer(timetable, many=True)
             return Response(serializer.data)
         return Response({'error': 'teacher_email parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -625,7 +630,7 @@ class FormerMemberViewSet(viewsets.ReadOnlyModelViewSet):
         """Get former members by role"""
         role = request.query_params.get('role')
         if role:
-            members = self.queryset.filter(role=role)  # type: ignore[union-attr]
+            members = self.get_queryset().filter(role=role)  # type: ignore[union-attr]
             serializer = self.get_serializer(members, many=True)
             return Response(serializer.data)
         return Response({'error': 'role parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -645,6 +650,130 @@ class FormerMemberViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+# =================== FACE + LOCATION ATTENDANCE (STUDENTS) ===================
+# Office location and radius
+OFFICE_LAT = 13.068906816007116
+OFFICE_LON = 77.55541294505542
+LOCATION_RADIUS_METERS = 100
+IST = pytz.timezone("Asia/Kolkata")
+
+
+def _verify_location(latitude: float, longitude: float, radius_meters: int | None = None):
+    if radius_meters is None:
+        radius_meters = LOCATION_RADIUS_METERS
+    user_location = (latitude, longitude)
+    office_location = (OFFICE_LAT, OFFICE_LON)
+    distance_meters = geodesic(user_location, office_location).meters
+    return distance_meters <= radius_meters, distance_meters
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def school_attendance_view(request):
+    """Mark student attendance by matching face image and verifying location."""
+    if face_recognition is None:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'face_recognition package not installed. Please install dependencies.'
+        }, status=500)
+
+    lat = request.POST.get('latitude')
+    lon = request.POST.get('longitude')
+    if lat is None or lon is None:
+        return JsonResponse({'status': 'fail', 'message': 'Latitude and longitude required'}, status=400)
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+    except ValueError:
+        return JsonResponse({'status': 'fail', 'message': 'Invalid latitude or longitude'}, status=400)
+
+    uploaded_file = request.FILES.get('image') or request.FILES.get('file')
+    if not uploaded_file:
+        return JsonResponse({'status': 'fail', 'message': 'No image provided'}, status=400)
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+        for chunk in uploaded_file.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    try:
+        uploaded_img = face_recognition.load_image_file(tmp_path)
+        uploaded_encodings = face_recognition.face_encodings(uploaded_img)
+        if not uploaded_encodings:
+            return JsonResponse({'status': 'fail', 'message': 'No face detected'}, status=400)
+        uploaded_encoding = uploaded_encodings[0]
+
+        # Iterate over students with profile images
+        matched_student = None
+        from .models import Student, Attendance  # local import to avoid cycles
+        candidates = Student.objects.exclude(profile_picture__isnull=True).exclude(profile_picture__exact='')
+        for student in candidates:
+            try:
+                resp = requests.get(student.profile_picture, timeout=10)
+                if resp.status_code != 200:
+                    continue
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as s_tmp:
+                    s_tmp.write(resp.content)
+                    s_path = s_tmp.name
+                s_img = face_recognition.load_image_file(s_path)
+                s_encs = face_recognition.face_encodings(s_img)
+                os.remove(s_path)
+                if not s_encs:
+                    continue
+                match = face_recognition.compare_faces([s_encs[0]], uploaded_encoding, tolerance=0.5)
+                if match and match[0]:
+                    matched_student = student
+                    break
+            except Exception:
+                continue
+
+        if not matched_student:
+            return JsonResponse({'status': 'fail', 'message': 'No matching student found'}, status=404)
+
+        # Verify location proximity
+        is_within, distance_m = _verify_location(lat_f, lon_f)
+        if not is_within:
+            return JsonResponse({
+                'status': 'fail',
+                'message': f'Too far from office ({distance_m:.2f}m). Must be within {LOCATION_RADIUS_METERS}m.'
+            }, status=400)
+
+        # Mark attendance for today
+        today = timezone.localdate()
+        # Determine actor role (who is marking)
+        actor_role = getattr(getattr(request, 'user', None), 'role', None) or 'Admin'
+        att, created = Attendance.objects.get_or_create(
+            student=matched_student,
+            date=today,
+            defaults={
+                'class_name': matched_student.class_name,
+                'status': 'Present',
+                'marked_by_role': actor_role,
+            }
+        )
+        if not created:
+            # Update status/role if already exists
+            att.status = 'Present'
+            att.marked_by_role = actor_role
+            if matched_student.class_name:
+                att.class_name = matched_student.class_name
+            att.save()
+
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Attendance marked for {matched_student.fullname}',
+            'student': matched_student.fullname,
+            'student_id': matched_student.student_id,
+            'date': str(today),
+            'marked_by_role': actor_role,
+        })
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+
 # ------------------- DOCUMENT VIEWSET -------------------
 class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
@@ -654,6 +783,37 @@ class DocumentViewSet(viewsets.ModelViewSet):
     filterset_fields = ['email']
     search_fields = ['email__email']
     ordering_fields = ['uploaded_at']
+
+    @action(detail=False, methods=['post'])
+    def bulk_upsert(self, request):
+        """Upsert documents by user email (OneToOne). Expects an array of objects with email and any doc fields."""
+        if not isinstance(request.data, list):
+            return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
+        created = 0
+        updated = 0
+        errors: list[dict] = []
+        for idx, item in enumerate(request.data):
+            try:
+                email = item.get('email')
+                if not email:
+                    raise ValueError('email is required')
+                try:
+                    user = User.objects.get(email=email)
+                except User.DoesNotExist:
+                    raise ValueError(f"User not found: {email}")
+                # remove email key for defaults
+                defaults = {k: v for k, v in item.items() if k != 'email'}
+                obj, was_created = Document.objects.update_or_create(
+                    email=user,
+                    defaults=defaults
+                )
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+            except Exception as e:
+                errors.append({'index': idx, 'error': str(e), 'item': item})
+        return Response({'created': created, 'updated': updated, 'errors': errors})
 
 
 # ------------------- NOTICE VIEWSET -------------------
@@ -666,6 +826,16 @@ class NoticeViewSet(viewsets.ModelViewSet):
     search_fields = ['title', 'message', 'email__email']
     ordering_fields = ['posted_date', 'important']
 
+    @action(detail=False, methods=['post'])
+    def bulk_create(self, request):
+        """Create multiple notices. Expects JSON array. Does not upsert."""
+        if not isinstance(request.data, list):
+            return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
+        ser = self.get_serializer(data=request.data, many=True)
+        ser.is_valid(raise_exception=True)
+        self.perform_create(ser)
+        return Response({'created': len(ser.data)}, status=status.HTTP_201_CREATED)
+
 
 # ------------------- ISSUE VIEWSET -------------------
 class IssueViewSet(viewsets.ModelViewSet):
@@ -676,6 +846,16 @@ class IssueViewSet(viewsets.ModelViewSet):
     filterset_fields = ['status', 'priority', 'raised_by', 'raised_to']
     search_fields = ['subject', 'description', 'raised_by__email', 'raised_to__email']
     ordering_fields = ['created_at', 'updated_at', 'priority', 'status']
+
+    @action(detail=False, methods=['post'])
+    def bulk_create(self, request):
+        """Create multiple issues. Expects JSON array."""
+        if not isinstance(request.data, list):
+            return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
+        ser = self.get_serializer(data=request.data, many=True)
+        ser.is_valid(raise_exception=True)
+        self.perform_create(ser)
+        return Response({'created': len(ser.data)}, status=status.HTTP_201_CREATED)
 
 
 # ------------------- HOLIDAY VIEWSET -------------------
@@ -688,6 +868,50 @@ class HolidayViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'type', 'country']
     ordering_fields = ['date', 'name']
 
+    @action(detail=False, methods=['post'])
+    def bulk_upsert(self, request):
+        """Accepts a JSON array of holiday objects and upserts them."""
+        if not isinstance(request.data, list):
+            return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
+
+        created = 0
+        updated = 0
+        errors: list[dict] = []
+
+        for idx, item in enumerate(request.data):
+            try:
+                # Validate via serializer (partial to allow minimal fields)
+                ser = self.get_serializer(data=item)
+                ser.is_valid(raise_exception=True)
+                data = ser.validated_data
+
+                # Required: date
+                date_val = data.get('date')
+                if date_val is None:
+                    raise ValueError('date is required')
+
+                defaults = {
+                    'name': data.get('name') or '',
+                    'country': data.get('country') or 'India',
+                    'type': data.get('type') or '',
+                    'year': data.get('year') or date_val.year,
+                    'month': data.get('month') or date_val.month,
+                    'weekday': data.get('weekday') or date_val.strftime('%A'),
+                }
+                obj, was_created = Holiday.objects.update_or_create(
+                    date=date_val,
+                    country=defaults['country'],
+                    defaults=defaults
+                )
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+            except Exception as e:
+                errors.append({'index': idx, 'error': str(e), 'item': item})
+
+        return Response({'created': created, 'updated': updated, 'errors': errors}, status=status.HTTP_200_OK)
+
 
 # ------------------- AWARD VIEWSET -------------------
 class AwardViewSet(viewsets.ModelViewSet):
@@ -698,3 +922,35 @@ class AwardViewSet(viewsets.ModelViewSet):
     filterset_fields = ['email']
     search_fields = ['title', 'description', 'email__email']
     ordering_fields = ['created_at', 'title']
+
+    @action(detail=False, methods=['post'])
+    def bulk_upsert(self, request):
+        """Upsert awards by (email, title). Expects JSON array."""
+        if not isinstance(request.data, list):
+            return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
+        created = 0
+        updated = 0
+        errors: list[dict] = []
+        for idx, item in enumerate(request.data):
+            try:
+                email = item.get('email')
+                title = item.get('title')
+                if not email or not title:
+                    raise ValueError('email and title are required')
+                try:
+                    user = User.objects.get(email=email)
+                except User.DoesNotExist:
+                    raise ValueError(f"User not found: {email}")
+                defaults = {k: v for k, v in item.items() if k not in ('email', 'title')}
+                obj, was_created = Award.objects.update_or_create(
+                    email=user,
+                    title=title,
+                    defaults=defaults
+                )
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+            except Exception as e:
+                errors.append({'index': idx, 'error': str(e), 'item': item})
+        return Response({'created': created, 'updated': updated, 'errors': errors})

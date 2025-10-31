@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
-    User, Department, Class, Subject, Student, Teacher, Principal,
+    User, Department, Subject, Student, Teacher, Principal,
     Management, Admin as SchoolAdmin, Parent, Attendance, Grade,
     FeeStructure, FeePayment, Timetable, FormerMember
 )
@@ -51,15 +51,6 @@ class DepartmentAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
 
 
-# ------------------- CLASS ADMIN -------------------
-@admin.register(Class)
-class ClassAdmin(admin.ModelAdmin):
-    list_display = ('class_name', 'section', 'created_at')
-    search_fields = ('class_name', 'section')
-    list_filter = ('class_name',)
-    readonly_fields = ('created_at', 'updated_at')
-
-
 # ------------------- SUBJECT ADMIN -------------------
 @admin.register(Subject)
 class SubjectAdmin(admin.ModelAdmin):
@@ -71,9 +62,9 @@ class SubjectAdmin(admin.ModelAdmin):
 # ------------------- STUDENT ADMIN -------------------
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('student_id', 'fullname', 'email', 'class_enrolled', 'admission_date')
+    list_display = ('student_id', 'fullname', 'email', 'class_name', 'section', 'admission_date')
     search_fields = ('fullname', 'student_id', 'email__email')
-    list_filter = ('class_enrolled', 'gender', 'admission_date')
+    list_filter = ('class_name', 'section', 'gender', 'admission_date')
     readonly_fields = ('email',)
 
 
@@ -123,9 +114,9 @@ class ParentAdmin(admin.ModelAdmin):
 # ------------------- ATTENDANCE ADMIN -------------------
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):
-    list_display = ('student', 'class_enrolled', 'date', 'status')
+    list_display = ('student', 'class_name', 'date', 'status')
     search_fields = ('student__fullname', 'student__student_id')
-    list_filter = ('status', 'date', 'class_enrolled')
+    list_filter = ('status', 'date', 'class_name')
     date_hierarchy = 'date'
     readonly_fields = ('created_at',)
 
@@ -142,9 +133,9 @@ class GradeAdmin(admin.ModelAdmin):
 # ------------------- FEE STRUCTURE ADMIN -------------------
 @admin.register(FeeStructure)
 class FeeStructureAdmin(admin.ModelAdmin):
-    list_display = ('class_level', 'fee_type', 'amount', 'frequency')
-    search_fields = ('class_level__class_name', 'fee_type')
-    list_filter = ('fee_type', 'frequency', 'class_level')
+    list_display = ('class_name', 'fee_type', 'amount', 'frequency')
+    search_fields = ('class_name', 'fee_type')
+    list_filter = ('fee_type', 'frequency', 'class_name')
     readonly_fields = ('created_at', 'updated_at')
 
 
@@ -161,9 +152,9 @@ class FeePaymentAdmin(admin.ModelAdmin):
 # ------------------- TIMETABLE ADMIN -------------------
 @admin.register(Timetable)
 class TimetableAdmin(admin.ModelAdmin):
-    list_display = ('class_enrolled', 'subject', 'teacher', 'day_of_week', 'start_time', 'end_time', 'room_number')
-    search_fields = ('class_enrolled__class_name', 'subject__subject_name', 'teacher__fullname')
-    list_filter = ('day_of_week', 'class_enrolled')
+    list_display = ('class_name', 'subject', 'teacher', 'day_of_week', 'start_time', 'end_time', 'room_number')
+    search_fields = ('class_name', 'subject__subject_name', 'teacher__fullname')
+    list_filter = ('day_of_week', 'class_name')
     readonly_fields = ('created_at', 'updated_at')
 
 

@@ -14,9 +14,9 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'school_backend.settings')
 django.setup()
 
 from school.models import (
-    User, Department, Class, Subject, Student, Teacher, Principal,
+    User, Department, Subject, Student, Teacher, Principal,
     Management, Admin, Parent, Attendance, Grade, FeeStructure,
-    FeePayment, Timetable, FormerMember
+    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Award
 )
 
 def populate_database():
@@ -36,7 +36,6 @@ def populate_database():
     Admin.objects.all().delete()
     Parent.objects.all().delete()
     Subject.objects.all().delete()
-    Class.objects.all().delete()
     Department.objects.all().delete()
     User.objects.filter(is_superuser=False).delete()
     
@@ -60,24 +59,19 @@ def populate_database():
         departments[dept.department_name] = dept
         print(f"   {'Created' if created else 'Found existing'}: {dept}")
     
-    # 2. Create Classes
-    print("\n2. Creating Classes...")
+    # 2. Define Classes (in-memory only for assigning strings)
+    print("\n2. Defining Classes (string fields)...")
     classes_data = [
-        {"class_name": "Grade 1 A", "section": "A", "description": "First grade section A"},
-        {"class_name": "Grade 1 B", "section": "B", "description": "First grade section B"},
-        {"class_name": "Grade 5 A", "section": "A", "description": "Fifth grade section A"},
-        {"class_name": "Grade 8 A", "section": "A", "description": "Eighth grade section A"},
-        {"class_name": "Grade 10 A", "section": "A", "description": "Tenth grade section A"},
-        {"class_name": "Grade 12 Science", "section": "Science", "description": "Twelfth grade Science stream"},
+        {"class_name": "Grade 1", "section": "A"},
+        {"class_name": "Grade 1", "section": "B"},
+        {"class_name": "Grade 5", "section": "A"},
+        {"class_name": "Grade 8", "section": "A"},
+        {"class_name": "Grade 10", "section": "A"},
+        {"class_name": "Grade 12 Science", "section": None},
     ]
-    classes = {}
-    for cls_data in classes_data:
-        cls, created = Class.objects.get_or_create(
-            class_name=cls_data["class_name"],
-            defaults=cls_data
-        )
-        classes[f"{cls_data['class_name']}"] = cls
-        print(f"   {'Created' if created else 'Found existing'}: {cls}")
+    classes = {f"{c['class_name']}": c for c in classes_data}
+    for c in classes_data:
+        print(f"   Defined: {c['class_name']} {c['section'] or ''}")
     
     # 3. Create Subjects
     print("\n3. Creating Subjects...")
@@ -393,7 +387,8 @@ def populate_database():
             "fullname": "Test Student One",
             "student_id": "S001",
             "parent": parents["parent1@example.com"],
-            "class_enrolled": classes["Grade 10 A"],
+            "class_name": classes["Grade 10"]["class_name"],
+            "section": "A",
             "phone": "+1-555-3001",
             "date_of_birth": date(2010, 3, 15),
             "gender": "Female",
@@ -415,7 +410,8 @@ def populate_database():
             "fullname": "Bob Miller",
             "student_id": "S003",
             "parent": parents["parent2@example.com"],
-            "class_enrolled": classes["Grade 8 A"],
+            "class_name": classes["Grade 8"]["class_name"],
+            "section": "A",
             "phone": "+1-555-3002",
             "date_of_birth": date(2012, 6, 20),
             "gender": "Male",
@@ -426,7 +422,8 @@ def populate_database():
             "fullname": "Charlie Williams",
             "student_id": "S004",
             "parent": parents["parent3@example.com"],
-            "class_enrolled": classes["Grade 12 Science"],
+            "class_name": classes["Grade 12 Science"]["class_name"],
+            "section": None,
             "phone": "+1-555-3003",
             "date_of_birth": date(2008, 9, 10),
             "gender": "Male",
@@ -437,7 +434,8 @@ def populate_database():
             "fullname": "Diana Garcia",
             "student_id": "S005",
             "parent": parents["parent4@example.com"],
-            "class_enrolled": classes["Grade 5 A"],
+            "class_name": classes["Grade 5"]["class_name"],
+            "section": "A",
             "phone": "+1-555-3004",
             "date_of_birth": date(2015, 12, 5),
             "gender": "Female",
@@ -448,7 +446,8 @@ def populate_database():
             "fullname": "Edward Brown",
             "student_id": "S006",
             "parent": parents["parent1@example.com"],
-            "class_enrolled": classes["Grade 1 A"],
+            "class_name": classes["Grade 1"]["class_name"],
+            "section": "A",
             "phone": "+1-555-3005",
             "date_of_birth": date(2019, 2, 28),
             "gender": "Male",
@@ -458,7 +457,8 @@ def populate_database():
     students = {}
     for student_data in students_data:
         parent = student_data.pop("parent")
-        class_enrolled = student_data.pop("class_enrolled")
+        class_name_val = student_data.pop("class_name")
+        section_val = student_data.pop("section")
         email = student_data.pop("email")  # Remove email from dict
         student_id = student_data["student_id"]
         
@@ -485,7 +485,8 @@ def populate_database():
             email=student_user,
             defaults={
                 "parent": parent,
-                "class_enrolled": class_enrolled,
+                "class_name": class_name_val,
+                "section": section_val,
                 "profile_picture": "https://i.pravatar.cc/150?img=30",
                 "residential_address": "789 Student Avenue, City",
                 "emergency_contact_name": "Emergency Contact",
@@ -498,7 +499,8 @@ def populate_database():
         )
         # Update existing student if needed
         if not created:
-            student_profile.class_enrolled = class_enrolled
+            student_profile.class_name = class_name_val
+            student_profile.section = section_val
             student_profile.parent = parent
             for key, value in student_data.items():
                 setattr(student_profile, key, value)
@@ -511,7 +513,7 @@ def populate_database():
     print("\n10. Creating Attendance Records...")
     attendance_count = 0
     for student in students.values():
-        if not student.class_enrolled:
+        if not student.class_name:
             print(f"   Skipping attendance for {student.fullname} - no class assigned")
             continue
         for i in range(10):  # Last 10 days
@@ -521,7 +523,7 @@ def populate_database():
                 student=student,
                 date=attendance_date,
                 defaults={
-                    "class_enrolled": student.class_enrolled,
+                    "class_name": student.class_name,
                     "status": status,
                     "remarks": "Regular attendance" if status == "Present" else "Absent without notice"
                 }
@@ -566,12 +568,12 @@ def populate_database():
         ]
         for fee_type, amount, frequency in fee_types:
             _, created = FeeStructure.objects.get_or_create(
-                class_level=cls,
+                class_name=cls["class_name"],
                 fee_type=fee_type,
                 defaults={
                     "amount": amount,
                     "frequency": frequency,
-                    "description": f"{fee_type} fee for {cls}"
+                    "description": f"{fee_type} fee for {cls['class_name']}"
                 }
             )
             if created:
@@ -621,7 +623,7 @@ def populate_database():
         for day_idx, day in enumerate(days):
             for slot_idx, (start, end) in enumerate(time_slots):
                 _, created = Timetable.objects.get_or_create(
-                    class_enrolled=cls,
+                    class_name=cls["class_name"],
                     day_of_week=day,
                     start_time=start,
                     defaults={
@@ -672,13 +674,111 @@ def populate_database():
         )
         print(f"   {'Created' if created else 'Found existing'} former member: {fm_data['fullname']}")
     
+    # 16. Create Documents (for some users)
+    print("\n16. Creating Documents...")
+    doc_targets = [
+        ("student1@school.com", {
+            "tenth": "https://example.com/docs/student1/tenth.pdf",
+            "twelth": "https://example.com/docs/student1/twelth.pdf",
+            "id_proof": "https://example.com/docs/student1/id.pdf",
+        }),
+        ("john.smith@school.com", {
+            "degree": "https://example.com/docs/teacher1/degree.pdf",
+            "resume": "https://example.com/docs/teacher1/resume.pdf",
+        }),
+        ("principal@school.com", {
+            "masters": "https://example.com/docs/principal/masters.pdf",
+            "achievement_crt": "https://example.com/docs/principal/award.pdf",
+        }),
+    ]
+    for email, fields in doc_targets:
+        try:
+            usr = User.objects.get(email=email)
+            Document.objects.update_or_create(
+                email=usr,
+                defaults=fields
+            )
+            print(f"   Upserted documents for {email}")
+        except User.DoesNotExist:
+            print(f"   Skipped documents for missing user: {email}")
+
+    # 17. Create Notices
+    print("\n17. Creating Notices...")
+    notice_defs = [
+        {
+            "title": "PTM Scheduled",
+            "message": "Parent-Teacher meeting on 10th Nov at 10 AM.",
+            "email": admin_user,
+            "important": True,
+            "notice_by": principal_user,
+            "notice_to": None,
+        },
+        {
+            "title": "Science Fair",
+            "message": "Annual Science Fair next week.",
+            "email": None,
+            "important": False,
+            "notice_by": teachers["T001"].email if "teachers" in locals() and "T001" in teachers else None,
+            "notice_to": None,
+        },
+    ]
+    for nd in notice_defs:
+        Notice.objects.get_or_create(
+            title=nd["title"],
+            defaults=nd
+        )
+        print(f"   Ensured notice: {nd['title']}")
+
+    # 18. Create Issues
+    print("\n18. Creating Issues...")
+    mgmt_first = Management.objects.first()
+    mgmt_user = mgmt_first.email if mgmt_first else admin_user
+    issue_defs = [
+        {
+            "subject": "Classroom Projector Not Working",
+            "status": "Open",
+            "description": "Projector in Room 101 fails to start.",
+            "priority": "High",
+            "raised_by": teachers["T001"].email if "teachers" in locals() and "T001" in teachers else admin_user,
+            "raised_to": mgmt_user,
+        },
+        {
+            "subject": "Library Books Request",
+            "status": "In Progress",
+            "description": "Need new science journals.",
+            "priority": "Medium",
+            "raised_by": principal_user,
+            "raised_to": admin_user,
+        },
+    ]
+    for idef in issue_defs:
+        Issue.objects.get_or_create(
+            subject=idef["subject"],
+            defaults=idef
+        )
+        print(f"   Ensured issue: {idef['subject']}")
+
+    # 19. Create Awards
+    print("\n19. Creating Awards...")
+    award_defs = [
+        {"email": teachers["T001"].email if "teachers" in locals() and "T001" in teachers else admin_user, "title": "Best Teacher", "description": "Excellence in Mathematics", "photo": "https://example.com/awards/best-teacher.jpg"},
+        {"email": principal_user, "title": "Leadership Excellence", "description": "Outstanding leadership", "photo": "https://example.com/awards/leadership.jpg"},
+        {"email": admin_user, "title": "Service Award", "description": "Dedicated service to school", "photo": "https://example.com/awards/service.jpg"},
+    ]
+    for adef in award_defs:
+        Award.objects.get_or_create(
+            email=adef["email"],
+            title=adef["title"],
+            defaults={k: v for k, v in adef.items() if k not in ("email", "title")}
+        )
+        print(f"   Ensured award: {adef['title']}")
+    
     print("\n" + "="*50)
     print("DATABASE POPULATION COMPLETED SUCCESSFULLY!")
     print("="*50)
     print("\nSummary:")
     print(f"  Users: {User.objects.count()}")
     print(f"  Departments: {Department.objects.count()}")
-    print(f"  Classes: {Class.objects.count()}")
     print(f"  Subjects: {Subject.objects.count()}")
     print(f"  Students: {Student.objects.count()}")
     print(f"  Teachers: {Teacher.objects.count()}")
@@ -692,6 +792,10 @@ def populate_database():
     print(f"  Fee Payments: {FeePayment.objects.count()}")
     print(f"  Timetable: {Timetable.objects.count()}")
     print(f"  Former Members: {FormerMember.objects.count()}")
+    print(f"  Documents: {Document.objects.count()}")
+    print(f"  Notices: {Notice.objects.count()}")
+    print(f"  Issues: {Issue.objects.count()}")
+    print(f"  Awards: {Award.objects.count()}")
     print("\nLogin Credentials:")
     print("  Admin: admin@school.com / admin123")
     print("  Principal: principal@school.com / principal123")

@@ -21,10 +21,6 @@ urlpatterns = [
     path('departments/', views.DepartmentViewSet.as_view({'get': 'list', 'post': 'create'}), name='department-list'),
     path('departments/<int:pk>/', views.DepartmentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='department-detail'),
     
-    # Classes
-    path('classes/', views.ClassViewSet.as_view({'get': 'list', 'post': 'create'}), name='class-list'),
-    path('classes/<int:pk>/', views.ClassViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='class-detail'),
-    
     # Subjects
     path('subjects/', views.SubjectViewSet.as_view({'get': 'list', 'post': 'create'}), name='subject-list'),
     path('subjects/<int:pk>/', views.SubjectViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='subject-detail'),
@@ -58,6 +54,7 @@ urlpatterns = [
     # Attendance
     path('attendance/', views.AttendanceViewSet.as_view({'get': 'list', 'post': 'create'}), name='attendance-list'),
     path('attendance/<int:pk>/', views.AttendanceViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='attendance-detail'),
+    path('attendance/mark_office/', views.school_attendance_view, name='attendance-mark-office'),
     
     # Grades
     path('grades/', views.GradeViewSet.as_view({'get': 'list', 'post': 'create'}), name='grade-list'),
@@ -81,21 +78,26 @@ urlpatterns = [
 
     # Documents
     path('documents/', views.DocumentViewSet.as_view({'get': 'list', 'post': 'create'}), name='document-list'),
+    path('documents/bulk_upsert/', views.DocumentViewSet.as_view({'post': 'bulk_upsert'}), name='document-bulk-upsert'),
     path('documents/<int:pk>/', views.DocumentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='document-detail'),
 
     # Notices
     path('notices/', views.NoticeViewSet.as_view({'get': 'list', 'post': 'create'}), name='notice-list'),
+    path('notices/bulk_create/', views.NoticeViewSet.as_view({'post': 'bulk_create'}), name='notice-bulk-create'),
     path('notices/<int:pk>/', views.NoticeViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='notice-detail'),
 
     # Issues
     path('issues/', views.IssueViewSet.as_view({'get': 'list', 'post': 'create'}), name='issue-list'),
+    path('issues/bulk_create/', views.IssueViewSet.as_view({'post': 'bulk_create'}), name='issue-bulk-create'),
     path('issues/<int:pk>/', views.IssueViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='issue-detail'),
 
     # Holidays
     path('holidays/', views.HolidayViewSet.as_view({'get': 'list', 'post': 'create'}), name='holiday-list'),
+    path('holidays/bulk_upsert/', views.HolidayViewSet.as_view({'post': 'bulk_upsert'}), name='holiday-bulk-upsert'),
     path('holidays/<int:pk>/', views.HolidayViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='holiday-detail'),
 
     # Awards
     path('awards/', views.AwardViewSet.as_view({'get': 'list', 'post': 'create'}), name='award-list'),
+    path('awards/bulk_upsert/', views.AwardViewSet.as_view({'post': 'bulk_upsert'}), name='award-bulk-upsert'),
     path('awards/<int:pk>/', views.AwardViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='award-detail'),
 ]
