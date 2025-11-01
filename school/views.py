@@ -23,7 +23,8 @@ except Exception:  # pragma: no cover
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
-    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award
+    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
+    Assignment, Leave, Task,
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer,
@@ -35,7 +36,8 @@ from .serializers import (
     GradeSerializer, GradeCreateSerializer,
     FeeStructureSerializer, FeePaymentSerializer, FeePaymentCreateSerializer,
     TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer,
-    DocumentSerializer, NoticeSerializer, IssueSerializer, HolidaySerializer, AwardSerializer
+    DocumentSerializer, NoticeSerializer, IssueSerializer, HolidaySerializer, AwardSerializer,
+    AssignmentSerializer, LeaveSerializer, TaskSerializer,
 )
 
 
@@ -812,6 +814,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
     permission_classes = [AllowAny]
+    lookup_field = 'email__email'
+    lookup_url_kwarg = 'email'
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['email']
     search_fields = ['email__email']
@@ -847,6 +851,67 @@ class DocumentViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 errors.append({'index': idx, 'error': str(e), 'item': item})
         return Response({'created': created, 'updated': updated, 'errors': errors})
+
+
+# ------------------- ASSIGNMENT VIEWSET -------------------
+class AssignmentViewSet(viewsets.ModelViewSet):
+    queryset = Assignment.objects.all()
+    serializer_class = AssignmentSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['subject', 'class_name', 'assigned_by', 'due_date']
+    search_fields = ['title', 'description', 'subject__subject_name', 'assigned_by__email']
+    ordering_fields = ['created_at', 'due_date']
+
+
+# ------------------- LEAVE VIEWSET -------------------
+class LeaveViewSet(viewsets.ModelViewSet):
+    queryset = Leave.objects.all()
+    serializer_class = LeaveSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['applicant', 'status', 'leave_type', 'start_date', 'end_date']
+    search_fields = ['applicant__email', 'reason']
+    ordering_fields = ['created_at', 'start_date', 'end_date', 'status']
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        leave = self.get_object()
+        leave.status = 'Approved'
+        approver = getattr(request, 'user', None)
+        if getattr(approver, 'email', None):
+            leave.approved_by_id = approver.email  # type: ignore[attr-defined]
+        leave.save()
+        return Response({'message': 'Leave approved', 'status': leave.status})
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        leave = self.get_object()
+        leave.status = 'Rejected'
+        approver = getattr(request, 'user', None)
+        if getattr(approver, 'email', None):
+            leave.approved_by_id = approver.email  # type: ignore[attr-defined]
+        leave.save()
+        return Response({'message': 'Leave rejected', 'status': leave.status})
+
+
+# ------------------- TASK VIEWSET -------------------
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['assigned_to', 'status', 'priority', 'due_date']
+    search_fields = ['title', 'description', 'assigned_to__email', 'created_by__email']
+    ordering_fields = ['created_at', 'due_date', 'priority', 'status']
+
+    @action(detail=True, methods=['post'])
+    def mark_done(self, request, pk=None):
+        task = self.get_object()
+        task.status = 'Done'
+        task.completed_at = timezone.now()
+        task.save()
+        return Response({'message': 'Task marked as done'})
 
 
 # ------------------- NOTICE VIEWSET -------------------

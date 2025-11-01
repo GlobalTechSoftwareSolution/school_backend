@@ -422,10 +422,12 @@ class Document(models.Model):
     award = models.URLField(null=True, blank=True)
     resume = models.URLField(null=True, blank=True)
     id_proof = models.URLField(null=True, blank=True)
-    appointment_letter = models.URLField(null=True, blank=True)
-    offer_letter = models.URLField(null=True, blank=True)
-    releaving_letter = models.URLField(null=True, blank=True)
-    resignation_letter = models.URLField(null=True, blank=True)
+    transfer_certificate = models.URLField(null=True, blank=True)
+    study_certificate = models.URLField(null=True, blank=True)
+    conduct_certificate = models.URLField(null=True, blank=True)
+    student_id_card = models.URLField(null=True, blank=True)
+    admit_card = models.URLField(null=True, blank=True)
+    fee_receipt = models.URLField(null=True, blank=True)
     achievement_crt = models.URLField(null=True, blank=True)
     bonafide_crt = models.URLField(null=True, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
@@ -513,3 +515,82 @@ class Holiday(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.date} - {self.weekday})"
+
+
+class Assignment(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    subject: Subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='assignments')  # type: ignore[assignment]
+    class_name = models.CharField(max_length=50, null=True, blank=True)
+    assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='assignments_assigned')
+    due_date = models.DateField(null=True, blank=True)
+    attachment = models.URLField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} - {self.subject.subject_name}"
+
+
+class Leave(models.Model):
+    LEAVE_TYPES = [
+        ('Sick', 'Sick'),
+        ('Casual', 'Casual'),
+        ('Vacation', 'Vacation'),
+        ('Other', 'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('Pending', 'Pending'),
+        ('Approved', 'Approved'),
+        ('Rejected', 'Rejected'),
+    ]
+
+    applicant = models.ForeignKey(User, on_delete=models.CASCADE, to_field='email', related_name='leaves')
+    leave_type = models.CharField(max_length=20, choices=LEAVE_TYPES)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='leaves_approved')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.applicant.email} - {self.leave_type} ({self.status})"
+
+
+class Task(models.Model):
+    STATUS_CHOICES = [
+        ('Todo', 'Todo'),
+        ('In Progress', 'In Progress'),
+        ('Done', 'Done'),
+    ]
+    PRIORITY_CHOICES = [
+        ('Low', 'Low'),
+        ('Medium', 'Medium'),
+        ('High', 'High'),
+        ('Urgent', 'Urgent'),
+    ]
+
+    title = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='tasks_assigned_to')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='tasks_created')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Todo')
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='Medium')
+    due_date = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', 'priority']
+
+    def __str__(self):
+        return f"{self.title} - {self.status}"

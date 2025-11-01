@@ -79,7 +79,7 @@ urlpatterns = [
     # Documents
     path('documents/', views.DocumentViewSet.as_view({'get': 'list', 'post': 'create'}), name='document-list'),
     path('documents/bulk_upsert/', views.DocumentViewSet.as_view({'post': 'bulk_upsert'}), name='document-bulk-upsert'),
-    path('documents/<int:pk>/', views.DocumentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='document-detail'),
+    path('documents/<str:email>/', views.DocumentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='document-detail'),
 
     # Notices
     path('notices/', views.NoticeViewSet.as_view({'get': 'list', 'post': 'create'}), name='notice-list'),
@@ -100,4 +100,19 @@ urlpatterns = [
     path('awards/', views.AwardViewSet.as_view({'get': 'list', 'post': 'create'}), name='award-list'),
     path('awards/bulk_upsert/', views.AwardViewSet.as_view({'post': 'bulk_upsert'}), name='award-bulk-upsert'),
     path('awards/<int:pk>/', views.AwardViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='award-detail'),
+
+    # Assignments
+    path('assignments/', views.AssignmentViewSet.as_view({'get': 'list', 'post': 'create'}), name='assignment-list'),
+    path('assignments/<int:pk>/', views.AssignmentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='assignment-detail'),
+
+    # Leaves
+    path('leaves/', views.LeaveViewSet.as_view({'get': 'list', 'post': 'create'}), name='leave-list'),
+    path('leaves/<int:pk>/', views.LeaveViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='leave-detail'),
+    path('leaves/<int:pk>/approve/', views.LeaveViewSet.as_view({'post': 'approve'}), name='leave-approve'),
+    path('leaves/<int:pk>/reject/', views.LeaveViewSet.as_view({'post': 'reject'}), name='leave-reject'),
+
+    # Tasks
+    path('tasks/', views.TaskViewSet.as_view({'get': 'list', 'post': 'create'}), name='task-list'),
+    path('tasks/<int:pk>/', views.TaskViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='task-detail'),
+    path('tasks/<int:pk>/mark_done/', views.TaskViewSet.as_view({'post': 'mark_done'}), name='task-mark-done'),
 ]

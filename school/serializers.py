@@ -3,7 +3,8 @@ from django.contrib.auth import get_user_model
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
-    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award
+    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
+    Assignment, Leave, Task,
 )
 
 UserModel = get_user_model()
@@ -242,4 +243,33 @@ class HolidaySerializer(serializers.ModelSerializer):
 class AwardSerializer(serializers.ModelSerializer):
     class Meta:
         model = Award
+        fields = '__all__'
+
+
+# ------------------- ASSIGNMENT -------------------
+class AssignmentSerializer(serializers.ModelSerializer):
+    subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
+
+    class Meta:
+        model = Assignment
+        fields = '__all__'
+
+
+# ------------------- LEAVE -------------------
+class LeaveSerializer(serializers.ModelSerializer):
+    applicant_email = serializers.EmailField(source='applicant.email', read_only=True)
+    approved_by_email = serializers.EmailField(source='approved_by.email', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Leave
+        fields = '__all__'
+
+
+# ------------------- TASK -------------------
+class TaskSerializer(serializers.ModelSerializer):
+    assigned_to_email = serializers.EmailField(source='assigned_to.email', read_only=True, allow_null=True)
+    created_by_email = serializers.EmailField(source='created_by.email', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Task
         fields = '__all__'
