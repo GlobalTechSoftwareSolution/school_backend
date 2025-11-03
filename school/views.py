@@ -23,8 +23,7 @@ except Exception:  # pragma: no cover
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
-    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
-    Assignment, Leave, Task,
+    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award, Assignment, Leave, Task,
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer,
@@ -583,8 +582,8 @@ class TimetableViewSet(viewsets.ModelViewSet):
     queryset = Timetable.objects.all()
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_name', 'subject', 'teacher', 'day_of_week']
-    search_fields = ['class_name', 'subject__subject_name', 'teacher__fullname']
+    filterset_fields = ['class_name', 'section', 'subject', 'teacher', 'day_of_week']
+    search_fields = ['class_name', 'section', 'subject__subject_name', 'teacher__fullname']
     ordering_fields = ['day_of_week', 'start_time']
 
     def get_serializer_class(self):
@@ -859,7 +858,7 @@ class AssignmentViewSet(viewsets.ModelViewSet):
     serializer_class = AssignmentSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['subject', 'class_name', 'assigned_by', 'due_date']
+    filterset_fields = ['subject', 'class_name', 'section', 'assigned_by', 'due_date', 'status']
     search_fields = ['title', 'description', 'subject__subject_name', 'assigned_by__email']
     ordering_fields = ['created_at', 'due_date']
 

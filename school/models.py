@@ -332,9 +332,14 @@ class FeePayment(models.Model):
 
 # ------------------- TIMETABLE -------------------
 class Timetable(models.Model):
+
     class_name = models.CharField(max_length=50)
+    section = models.CharField(max_length=10, null=True, blank=True)  # Added section field
+
     subject: Subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='timetable_entries')  # type: ignore[assignment]
+
     teacher: Teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, to_field='email', related_name='timetable_entries')  # type: ignore[assignment]
+
     day_of_week = models.CharField(max_length=20, choices=[
         ('Monday', 'Monday'),
         ('Tuesday', 'Tuesday'),
@@ -343,6 +348,7 @@ class Timetable(models.Model):
         ('Friday', 'Friday'),
         ('Saturday', 'Saturday'),
     ])
+
     start_time = models.TimeField()
     end_time = models.TimeField()
     room_number = models.CharField(max_length=50, null=True, blank=True)
@@ -354,6 +360,34 @@ class Timetable(models.Model):
 
     def __str__(self):
         return f"{self.class_name} - {self.subject.subject_name} - {self.day_of_week} {self.start_time}-{self.end_time}"
+
+
+class Assignment(models.Model):
+    STATUS_CHOICES = [
+        ('Assigned', 'Assigned'),
+        ('In Progress', 'In Progress'),
+        ('Submitted', 'Submitted'),
+        ('Graded', 'Graded'),
+        ('Late', 'Late'),
+    ]
+    
+    title = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    subject: Subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='assignments')  # type: ignore[assignment]
+    class_name = models.CharField(max_length=50, null=True, blank=True)
+    section = models.CharField(max_length=10, null=True, blank=True)  # Added section field
+    assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='assignments_assigned')
+    due_date = models.DateField(null=True, blank=True)
+    attachment = models.URLField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Assigned')  # Added status field
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} - {self.subject.subject_name}"
 
 
 # ------------------- FORMER MEMBER (BACKUP) -------------------
@@ -515,25 +549,6 @@ class Holiday(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.date} - {self.weekday})"
-
-
-class Assignment(models.Model):
-    title = models.CharField(max_length=255)
-    description = models.TextField(null=True, blank=True)
-    subject: Subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='assignments')  # type: ignore[assignment]
-    class_name = models.CharField(max_length=50, null=True, blank=True)
-    assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='assignments_assigned')
-    due_date = models.DateField(null=True, blank=True)
-    attachment = models.URLField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"{self.title} - {self.subject.subject_name}"
-
 
 class Leave(models.Model):
     LEAVE_TYPES = [

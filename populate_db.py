@@ -16,7 +16,8 @@ django.setup()
 from school.models import (
     User, Department, Subject, Student, Teacher, Principal,
     Management, Admin, Parent, Attendance, Grade, FeeStructure,
-    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Award
+    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Award,
+    Assignment, Leave, Task,
 )
 
 def populate_database():
@@ -387,7 +388,7 @@ def populate_database():
             "fullname": "Test Student One",
             "student_id": "S001",
             "parent": parents["parent1@example.com"],
-            "class_name": classes["Grade 10"]["class_name"],
+            "class_name": "Grade 10",
             "section": "A",
             "phone": "+1-555-3001",
             "date_of_birth": date(2010, 3, 15),
@@ -399,7 +400,8 @@ def populate_database():
             "fullname": "Alice Miller",
             "student_id": "S002",
             "parent": parents["parent1@example.com"],
-            "class_enrolled": classes["Grade 10 A"],
+            "class_name": "Grade 10",
+            "section": "A",
             "phone": "+1-555-3001",
             "date_of_birth": date(2010, 3, 15),
             "gender": "Female",
@@ -410,7 +412,7 @@ def populate_database():
             "fullname": "Bob Miller",
             "student_id": "S003",
             "parent": parents["parent2@example.com"],
-            "class_name": classes["Grade 8"]["class_name"],
+            "class_name": "Grade 8",
             "section": "A",
             "phone": "+1-555-3002",
             "date_of_birth": date(2012, 6, 20),
@@ -422,7 +424,7 @@ def populate_database():
             "fullname": "Charlie Williams",
             "student_id": "S004",
             "parent": parents["parent3@example.com"],
-            "class_name": classes["Grade 12 Science"]["class_name"],
+            "class_name": "Grade 12 Science",
             "section": None,
             "phone": "+1-555-3003",
             "date_of_birth": date(2008, 9, 10),
@@ -446,7 +448,7 @@ def populate_database():
             "fullname": "Edward Brown",
             "student_id": "S006",
             "parent": parents["parent1@example.com"],
-            "class_name": classes["Grade 1"]["class_name"],
+            "class_name": "Grade 1",
             "section": "A",
             "phone": "+1-555-3005",
             "date_of_birth": date(2019, 2, 28),
@@ -584,9 +586,9 @@ def populate_database():
     print("\n13. Creating Fee Payments...")
     payment_count = 0
     for student in students.values():
-        if not student.class_enrolled:
+        if not student.class_name:
             continue
-        fee_structures = FeeStructure.objects.filter(class_level=student.class_enrolled)
+        fee_structures = FeeStructure.objects.filter(class_name=student.class_name)
         for idx, fee_struct in enumerate(fee_structures[:3]):  # First 3 fees
             _, created = FeePayment.objects.get_or_create(
                 student=student,
@@ -772,7 +774,114 @@ def populate_database():
             defaults={k: v for k, v in adef.items() if k not in ("email", "title")}
         )
         print(f"   Ensured award: {adef['title']}")
-    
+
+    # 20. Create Assignments
+    print("\n20. Creating Assignments...")
+    # Safely resolve teacher Users for assigned_by
+    t001 = teachers.get("T001") if "teachers" in locals() else None
+    t002 = teachers.get("T002") if "teachers" in locals() else None
+    t001_user = t001.email if t001 is not None else None
+    t002_user = t002.email if t002 is not None else None
+
+    assignment_defs = [
+        {
+            "title": "Algebra Homework",
+            "description": "Solve problems 1-10 from chapter 3",
+            "subject": subjects.get("MATH101"),
+            "class_name": "Grade 10",
+            "assigned_by": t001_user,
+            "due_date": date.today() + timedelta(days=5),
+            "attachment": "https://example.com/assignments/algebra.pdf",
+        },
+        {
+            "title": "Physics Lab Report",
+            "description": "Write a report on motion experiment",
+            "subject": subjects.get("PHY101"),
+            "class_name": "Grade 10",
+            "assigned_by": t002_user,
+            "due_date": date.today() + timedelta(days=7),
+        },
+    ]
+    for a in assignment_defs:
+        if a["subject"] is None or a["assigned_by"] is None:
+            continue
+        Assignment.objects.get_or_create(
+            title=a["title"],
+            subject=a["subject"],
+            due_date=a["due_date"],
+            defaults={k: v for k, v in a.items() if k not in ("title", "subject", "due_date")}
+        )
+
+    # 21. Create Leaves
+    print("\n21. Creating Leaves...")
+    leave_defs = [
+        {
+            "applicant": User.objects.filter(email="student1@school.com").first(),
+            "leave_type": "Sick",
+            "start_date": date.today() + timedelta(days=1),
+            "end_date": date.today() + timedelta(days=2),
+            "reason": "Fever",
+            "status": "Pending",
+            "approved_by": principal_user,
+        },
+        {
+            "applicant": User.objects.filter(email="john.smith@school.com").first(),
+            "leave_type": "Casual",
+            "start_date": date.today() + timedelta(days=3),
+            "end_date": date.today() + timedelta(days=3),
+            "reason": "Personal work",
+            "status": "Approved",
+            "approved_by": principal_user,
+        },
+    ]
+    for l in leave_defs:
+        if l["applicant"] is None:
+            continue
+        Leave.objects.get_or_create(
+            applicant=l["applicant"],
+            start_date=l["start_date"],
+            end_date=l["end_date"],
+            defaults={k: v for k, v in l.items() if k not in ("applicant", "start_date", "end_date")}
+        )
+
+    # 22. Create Tasks
+    print("\n22. Creating Tasks...")
+    task_defs = [
+        {
+            "title": "Prepare Lab Equipment",
+            "description": "Set up physics lab for Monday",
+            "assigned_to": User.objects.filter(email="john.smith@school.com").first(),
+            "created_by": admin_user,
+            "status": "Todo",
+            "priority": "High",
+            "due_date": date.today() + timedelta(days=2),
+        },
+        {
+            "title": "Update Math Syllabus",
+            "assigned_to": User.objects.filter(email="john.smith@school.com").first(),
+            "created_by": principal_user,
+            "status": "In Progress",
+            "priority": "Medium",
+            "due_date": date.today() + timedelta(days=10),
+        },
+        {
+            "title": "Organize PTA Meeting",
+            "assigned_to": principal_user,
+            "created_by": admin_user,
+            "status": "Todo",
+            "priority": "Urgent",
+            "due_date": date.today() + timedelta(days=7),
+        },
+    ]
+    for t in task_defs:
+        if t["assigned_to"] is None or t["created_by"] is None:
+            continue
+        Task.objects.get_or_create(
+            title=t["title"],
+            assigned_to=t["assigned_to"],
+            defaults={k: v for k, v in t.items() if k not in ("title", "assigned_to")}
+        )
+
     print("\n" + "="*50)
     print("DATABASE POPULATION COMPLETED SUCCESSFULLY!")
     print("="*50)
@@ -796,6 +905,9 @@ def populate_database():
     print(f"  Notices: {Notice.objects.count()}")
     print(f"  Issues: {Issue.objects.count()}")
     print(f"  Awards: {Award.objects.count()}")
+    print(f"  Assignments: {Assignment.objects.count()}")
+    print(f"  Leaves: {Leave.objects.count()}")
+    print(f"  Tasks: {Task.objects.count()}")
     print("\nLogin Credentials:")
     print("  Admin: admin@school.com / admin123")
     print("  Principal: principal@school.com / principal123")
