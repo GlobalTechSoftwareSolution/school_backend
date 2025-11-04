@@ -24,6 +24,7 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award, Assignment, Leave, Task,
+    Project, Program, Activity, Report, FinanceTransaction, TransportDetails,
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer,
@@ -37,6 +38,8 @@ from .serializers import (
     TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer,
     DocumentSerializer, NoticeSerializer, IssueSerializer, HolidaySerializer, AwardSerializer,
     AssignmentSerializer, LeaveSerializer, TaskSerializer,
+    ProjectSerializer, ProgramSerializer, ActivitySerializer, ReportSerializer,
+    FinanceTransactionSerializer, TransportDetailsSerializer,
 )
 
 
@@ -218,8 +221,8 @@ class StudentViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_name', 'section', 'gender', 'blood_group']
-    search_fields = ['fullname', 'student_id', 'email__email']
+    filterset_fields = ['class_name', 'section', 'gender', 'blood_group', 'father_name', 'mother_name']
+    search_fields = ['fullname', 'student_id', 'email__email', 'father_name', 'mother_name']
     ordering_fields = ['fullname', 'admission_date']
 
     def get_serializer_class(self):
@@ -538,18 +541,18 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
     serializer_class = FeeStructureSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_level', 'fee_type', 'frequency']
+    filterset_fields = ['class_name', 'fee_type', 'frequency']
     search_fields = ['fee_type', 'description']
 
     @action(detail=False, methods=['get'])
     def by_class(self, request):
-        """Get fee structure by class"""
-        class_id = request.query_params.get('class_id')
-        if class_id:
-            fees = self.get_queryset().filter(class_level_id=class_id)  # type: ignore[union-attr]
+        """Get fee structure by class name"""
+        class_name = request.query_params.get('class_name')
+        if class_name:
+            fees = self.get_queryset().filter(class_name=class_name)
             serializer = self.get_serializer(fees, many=True)
             return Response(serializer.data)
-        return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'class_name parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ------------------- FEE PAYMENT VIEWSET -------------------
@@ -911,6 +914,72 @@ class TaskViewSet(viewsets.ModelViewSet):
         task.completed_at = timezone.now()
         task.save()
         return Response({'message': 'Task marked as done'})
+
+
+# ------------------- PROJECT VIEWSET -------------------
+class ProjectViewSet(viewsets.ModelViewSet):
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['status', 'owner', 'class_name', 'section', 'start_date', 'end_date']
+    search_fields = ['title', 'description', 'owner__email', 'class_name', 'section']
+    ordering_fields = ['created_at', 'start_date', 'end_date', 'status']
+
+
+# ------------------- PROGRAM VIEWSET -------------------
+class ProgramViewSet(viewsets.ModelViewSet):
+    queryset = Program.objects.all()
+    serializer_class = ProgramSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['status', 'coordinator', 'start_date', 'end_date']
+    search_fields = ['name', 'description', 'coordinator__email']
+    ordering_fields = ['created_at', 'start_date', 'end_date', 'status']
+
+
+# ------------------- ACTIVITY VIEWSET -------------------
+class ActivityViewSet(viewsets.ModelViewSet):
+    queryset = Activity.objects.all()
+    serializer_class = ActivitySerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['type', 'conducted_by', 'class_name', 'section', 'date']
+    search_fields = ['name', 'description', 'conducted_by__email', 'class_name', 'section']
+    ordering_fields = ['date', 'created_at']
+
+
+# ------------------- REPORT VIEWSET -------------------
+class ReportViewSet(viewsets.ModelViewSet):
+    queryset = Report.objects.all()
+    serializer_class = ReportSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['report_type', 'student', 'teacher', 'created_by', 'created_at']
+    search_fields = ['title', 'description', 'student__fullname', 'teacher__fullname', 'created_by__email']
+    ordering_fields = ['created_at', 'updated_at']
+
+
+# ------------------- FINANCE TRANSACTION VIEWSET -------------------
+class FinanceTransactionViewSet(viewsets.ModelViewSet):
+    queryset = FinanceTransaction.objects.all()
+    serializer_class = FinanceTransactionSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['type', 'category', 'date', 'recorded_by']
+    search_fields = ['description', 'reference_id', 'recorded_by__email', 'category']
+    ordering_fields = ['date', 'created_at', 'amount']
+
+
+# ------------------- TRANSPORT DETAILS VIEWSET -------------------
+class TransportDetailsViewSet(viewsets.ModelViewSet):
+    queryset = TransportDetails.objects.all()
+    serializer_class = TransportDetailsSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['student', 'route_name', 'bus_number', 'is_active']
+    search_fields = ['student__fullname', 'route_name', 'bus_number', 'driver_name', 'driver_phone']
+    ordering_fields = ['created_at', 'route_name']
 
 
 # ------------------- NOTICE VIEWSET -------------------

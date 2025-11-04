@@ -1,7 +1,10 @@
 from django.db import models
+from django.db.models import Sum
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
 from datetime import datetime
+from decimal import Decimal
+from django.core.exceptions import ValidationError
 
 
 # ------------------- USER MANAGER -------------------
@@ -106,6 +109,8 @@ class Student(models.Model):
     emergency_contact_relationship = models.CharField(max_length=50, null=True, blank=True)
     emergency_contact_no = models.CharField(max_length=20, null=True, blank=True)
     nationality = models.CharField(max_length=50, null=True, blank=True)
+    father_name = models.CharField(max_length=255, null=True, blank=True)
+    mother_name = models.CharField(max_length=255, null=True, blank=True)
     
     BLOOD_GROUP_CHOICES = [
         ('A+', 'A+'),
@@ -308,6 +313,8 @@ class FeePayment(models.Model):
     student: Student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='fee_payments')  # type: ignore[assignment]
     fee_structure: FeeStructure = models.ForeignKey(FeeStructure, on_delete=models.CASCADE, related_name='payments')  # type: ignore[assignment]
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False, null=True, blank=True)
+    remaining_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False, null=True, blank=True)
     payment_date = models.DateField()
     payment_method = models.CharField(max_length=50, choices=[
         ('Cash', 'Cash'),
@@ -328,6 +335,56 @@ class FeePayment(models.Model):
 
     def __str__(self):
         return f"{self.student.fullname} - {self.fee_structure.fee_type} - {self.amount_paid}"
+
+    def save(self, *args, **kwargs):
+        # Validate before computing fields
+        self.full_clean()
+        # Set total_amount from FeeStructure
+        fee_structure_id = getattr(self, 'fee_structure_id', None)
+        total = self.fee_structure.amount if fee_structure_id else Decimal('0')
+        self.total_amount = total
+
+        # Sum of other PAID payments for same student/fee type
+        qs = FeePayment.objects.filter(
+            student=self.student,
+            fee_structure=self.fee_structure,
+            status='Paid'
+        )
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        already_paid = qs.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
+
+        current_paid = self.amount_paid if self.status == 'Paid' else Decimal('0')
+        remaining = (total or Decimal('0')) - already_paid - current_paid
+        if remaining < Decimal('0'):
+            remaining = Decimal('0')
+        self.remaining_amount = remaining
+
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        # Ensure required relations exist
+        if not getattr(self, 'fee_structure_id', None) or not getattr(self, 'student_id', None):
+            return
+
+        # Only validate overpayment for successful payments
+        intended_paid = self.amount_paid if self.status == 'Paid' else Decimal('0')
+
+        # Sum other paid payments for same student & fee structure
+        qs = FeePayment.objects.filter(
+            student=self.student,
+            fee_structure=self.fee_structure,
+            status='Paid'
+        )
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        already_paid = qs.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
+
+        total = self.fee_structure.amount or Decimal('0')
+        if already_paid + intended_paid > total:
+            raise ValidationError({
+                'amount_paid': f"Overpayment: paid so far {already_paid}, current {intended_paid}, exceeds total {total}."
+            })
 
 
 # ------------------- TIMETABLE -------------------
@@ -609,3 +666,161 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.title} - {self.status}"
+
+
+# ------------------- PROJECT -------------------
+class Project(models.Model):
+    STATUS_CHOICES = [
+        ('Planned', 'Planned'),
+        ('In Progress', 'In Progress'),
+        ('Completed', 'Completed'),
+        ('On Hold', 'On Hold'),
+        ('Cancelled', 'Cancelled'),
+    ]
+
+    title = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Planned')
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='projects_owned')
+    class_name = models.CharField(max_length=50, null=True, blank=True)
+    section = models.CharField(max_length=10, null=True, blank=True)
+    attachment = models.URLField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} ({self.status})"
+
+
+# ------------------- PROGRAM -------------------
+class Program(models.Model):
+    STATUS_CHOICES = [
+        ('Planned', 'Planned'),
+        ('Active', 'Active'),
+        ('Completed', 'Completed'),
+        ('Cancelled', 'Cancelled'),
+    ]
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    coordinator = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='programs_coordinated')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Planned')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.status})"
+
+
+# ------------------- ACTIVITY -------------------
+class Activity(models.Model):
+    TYPE_CHOICES = [
+        ('Sports', 'Sports'),
+        ('Cultural', 'Cultural'),
+        ('Academic', 'Academic'),
+        ('Other', 'Other'),
+    ]
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='Other')
+    date = models.DateField(null=True, blank=True)
+    conducted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='activities_conducted')
+    class_name = models.CharField(max_length=50, null=True, blank=True)
+    section = models.CharField(max_length=10, null=True, blank=True)
+    attachment = models.URLField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.name} - {self.type}"
+
+
+# ------------------- REPORT -------------------
+class Report(models.Model):
+    REPORT_TYPES = [
+        ('General', 'General'),
+        ('Academic', 'Academic'),
+        ('Behavior', 'Behavior'),
+        ('Finance', 'Finance'),
+        ('Other', 'Other'),
+    ]
+
+    title = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    report_type = models.CharField(max_length=20, choices=REPORT_TYPES, default='General')
+    student = models.ForeignKey(Student, on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='reports')
+    teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='reports')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='reports_created')
+    file_url = models.URLField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} ({self.report_type})"
+
+
+# ------------------- FINANCE TRANSACTION -------------------
+class FinanceTransaction(models.Model):
+    TYPE_CHOICES = [
+        ('Income', 'Income'),
+        ('Expense', 'Expense'),
+    ]
+    CATEGORY_CHOICES = [
+        ('Tuition', 'Tuition'),
+        ('Transport', 'Transport'),
+        ('Salaries', 'Salaries'),
+        ('Supplies', 'Supplies'),
+        ('Maintenance', 'Maintenance'),
+        ('Other', 'Other'),
+    ]
+
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='Other')
+    description = models.TextField(null=True, blank=True)
+    reference_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='finance_records')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.type} - {self.category} - {self.amount}"
+
+
+# ------------------- TRANSPORT DETAILS -------------------
+class TransportDetails(models.Model):
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, to_field='email', related_name='transport_details')
+    route_name = models.CharField(max_length=100)
+    bus_number = models.CharField(max_length=50, null=True, blank=True)
+    pickup_point = models.CharField(max_length=255, null=True, blank=True)
+    drop_point = models.CharField(max_length=255, null=True, blank=True)
+    driver_name = models.CharField(max_length=100, null=True, blank=True)
+    driver_phone = models.CharField(max_length=20, null=True, blank=True)
+    transport_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.student.fullname} - {self.route_name}"

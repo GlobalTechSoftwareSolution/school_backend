@@ -17,7 +17,7 @@ from school.models import (
     User, Department, Subject, Student, Teacher, Principal,
     Management, Admin, Parent, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Award,
-    Assignment, Leave, Task,
+    Assignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails,
 )
 
 def populate_database():
@@ -394,6 +394,8 @@ def populate_database():
             "date_of_birth": date(2010, 3, 15),
             "gender": "Female",
             "admission_date": date(2022, 8, 1),
+            "father_name": "Richard Miller",
+            "mother_name": "Susan Miller",
         },
         {
             "email": "alice.miller@student.school.com",
@@ -406,6 +408,8 @@ def populate_database():
             "date_of_birth": date(2010, 3, 15),
             "gender": "Female",
             "admission_date": date(2022, 8, 1),
+            "father_name": "Richard Miller",
+            "mother_name": "Susan Miller",
         },
         {
             "email": "bob.miller@student.school.com",
@@ -418,6 +422,8 @@ def populate_database():
             "date_of_birth": date(2012, 6, 20),
             "gender": "Male",
             "admission_date": date(2023, 8, 1),
+            "father_name": "Richard Miller",
+            "mother_name": "Susan Miller",
         },
         {
             "email": "charlie.williams@student.school.com",
@@ -430,6 +436,8 @@ def populate_database():
             "date_of_birth": date(2008, 9, 10),
             "gender": "Male",
             "admission_date": date(2020, 8, 1),
+            "father_name": "James Williams",
+            "mother_name": "Mary Garcia",
         },
         {
             "email": "diana.garcia@student.school.com",
@@ -442,6 +450,8 @@ def populate_database():
             "date_of_birth": date(2015, 12, 5),
             "gender": "Female",
             "admission_date": date(2021, 8, 1),
+            "father_name": "Richard Garcia",
+            "mother_name": "Mary Garcia",
         },
         {
             "email": "edward.brown@student.school.com",
@@ -454,6 +464,8 @@ def populate_database():
             "date_of_birth": date(2019, 2, 28),
             "gender": "Male",
             "admission_date": date(2024, 8, 1),
+            "father_name": "Richard Miller",
+            "mother_name": "Susan Miller",
         },
     ]
     students = {}
@@ -882,6 +894,199 @@ def populate_database():
             defaults={k: v for k, v in t.items() if k not in ("title", "assigned_to")}
         )
 
+    # 23. Create Projects
+    print("\n23. Creating Projects...")
+    project_defs = [
+        {
+            "title": "Science Fair",
+            "description": "Annual school science fair",
+            "start_date": date.today() + timedelta(days=3),
+            "end_date": date.today() + timedelta(days=10),
+            "status": "Planned",
+            "owner": admin_user,
+            "class_name": "Grade 10",
+            "section": "A",
+        },
+        {
+            "title": "Math Olympiad Prep",
+            "description": "Preparation sessions for math olympiad",
+            "start_date": date.today(),
+            "status": "In Progress",
+            "owner": principal_user,
+        },
+    ]
+    for p in project_defs:
+        proj, created = Project.objects.get_or_create(
+            title=p["title"],
+            defaults=p,
+        )
+        if not created:
+            for k, v in p.items():
+                setattr(proj, k, v)
+            proj.save()
+
+    # 24. Create Programs
+    print("\n24. Creating Programs...")
+    program_defs = [
+        {
+            "name": "After School Tutoring",
+            "description": "Extra help for students",
+            "start_date": date.today() + timedelta(days=1),
+            "status": "Active",
+            "coordinator": principal_user,
+        },
+        {
+            "name": "Sports Camp",
+            "description": "Weekend sports activities",
+            "start_date": date.today() + timedelta(days=14),
+            "status": "Planned",
+            "coordinator": admin_user,
+        },
+    ]
+    for pr in program_defs:
+        program, created = Program.objects.get_or_create(
+            name=pr["name"],
+            defaults=pr,
+        )
+        if not created:
+            for k, v in pr.items():
+                setattr(program, k, v)
+            program.save()
+
+    # 25. Create Activities
+    print("\n25. Creating Activities...")
+    activity_defs = [
+        {
+            "name": "Football Match",
+            "description": "Inter-house football match",
+            "type": "Sports",
+            "date": date.today() + timedelta(days=5),
+            "conducted_by": User.objects.filter(email="john.smith@school.com").first(),
+            "class_name": "Grade 10",
+            "section": "A",
+        },
+        {
+            "name": "Debate Competition",
+            "type": "Cultural",
+            "date": date.today() + timedelta(days=8),
+            "conducted_by": admin_user,
+        },
+    ]
+    for ac in activity_defs:
+        if ac["conducted_by"] is None:
+            continue
+        act, created = Activity.objects.get_or_create(
+            name=ac["name"],
+            date=ac.get("date"),
+            defaults={k: v for k, v in ac.items() if k not in ("name", "date")},
+        )
+        if not created:
+            for k, v in ac.items():
+                if k not in ("name",):
+                    setattr(act, k, v)
+            act.save()
+
+    # 26. Create Reports
+    print("\n26. Creating Reports...")
+    some_student = Student.objects.first()
+    some_teacher = Teacher.objects.first()
+    report_defs = [
+        {
+            "title": "Monthly Performance",
+            "description": "Overall academic progress",
+            "report_type": "Academic",
+            "student": some_student,
+            "teacher": some_teacher,
+            "created_by": principal_user,
+        },
+        {
+            "title": "Incident Report",
+            "description": "Minor classroom incident",
+            "report_type": "Behavior",
+            "student": some_student,
+            "teacher": some_teacher,
+            "created_by": admin_user,
+        },
+    ]
+    for rp in report_defs:
+        report, created = Report.objects.get_or_create(
+            title=rp["title"],
+            created_by=rp["created_by"],
+            defaults={k: v for k, v in rp.items() if k not in ("title", "created_by")},
+        )
+        if not created:
+            for k, v in rp.items():
+                if k not in ("title", "created_by"):
+                    setattr(report, k, v)
+            report.save()
+
+    # 27. Create Finance Transactions
+    print("\n27. Creating Finance Transactions...")
+    finance_defs = [
+        {
+            "date": date.today(),
+            "amount": Decimal("10000.00"),
+            "type": "Income",
+            "category": "Tuition",
+            "description": "Tuition fee collection",
+            "reference_id": "FIN-TUITION-001",
+            "recorded_by": User.objects.filter(email="finance@school.com").first() or admin_user,
+        },
+        {
+            "date": date.today(),
+            "amount": Decimal("2500.00"),
+            "type": "Expense",
+            "category": "Supplies",
+            "description": "Lab equipment purchase",
+            "reference_id": "FIN-EXP-001",
+            "recorded_by": User.objects.filter(email="finance@school.com").first() or admin_user,
+        },
+    ]
+    for f in finance_defs:
+        if f["recorded_by"] is None:
+            continue
+        ft, created = FinanceTransaction.objects.get_or_create(
+            reference_id=f.get("reference_id"),
+            defaults=f,
+        )
+        if not created:
+            for k, v in f.items():
+                setattr(ft, k, v)
+            ft.save()
+
+    # 28. Create Transport Details
+    print("\n28. Creating Transport Details...")
+    for st in Student.objects.all()[:2]:
+        td, created = TransportDetails.objects.get_or_create(
+            student=st,
+            defaults={
+                "route_name": "Route 1",
+                "bus_number": "KA-01-1234",
+                "pickup_point": "Main Gate",
+                "drop_point": "City Park",
+                "driver_name": "Ravi",
+                "driver_phone": "+91-9999999999",
+                "transport_fee": Decimal("1000.00"),
+                "is_active": True,
+            }
+        )
+        if not created:
+            td.route_name = "Route 1"
+            td.bus_number = "KA-01-1234"
+            td.pickup_point = "Main Gate"
+            td.drop_point = "City Park"
+            td.driver_name = "Ravi"
+            td.driver_phone = "+91-9999999999"
+            td.transport_fee = Decimal("1000.00")
+            td.is_active = True
+            td.save()
+
+    # Ensure any remaining null/empty fields get placeholder data
+    try:
+        backfill_null_fields()
+    except Exception:
+        pass
+
     print("\n" + "="*50)
     print("DATABASE POPULATION COMPLETED SUCCESSFULLY!")
     print("="*50)
@@ -908,6 +1113,12 @@ def populate_database():
     print(f"  Assignments: {Assignment.objects.count()}")
     print(f"  Leaves: {Leave.objects.count()}")
     print(f"  Tasks: {Task.objects.count()}")
+    print(f"  Projects: {Project.objects.count()}")
+    print(f"  Programs: {Program.objects.count()}")
+    print(f"  Activities: {Activity.objects.count()}")
+    print(f"  Reports: {Report.objects.count()}")
+    print(f"  Finance Transactions: {FinanceTransaction.objects.count()}")
+    print(f"  Transport Details: {TransportDetails.objects.count()}")
     print("\nLogin Credentials:")
     print("  Admin: admin@school.com / admin123")
     print("  Principal: principal@school.com / principal123")
@@ -918,3 +1129,96 @@ def populate_database():
 
 if __name__ == "__main__":
     populate_database()
+
+
+# Backfill helper to replace NULL/empty values safely
+def backfill_null_fields():
+    """
+    Iterate over key tables and fill NULL/empty fields with raw placeholder data.
+    Never overwrite non-empty values.
+    Run with: python manage.py shell -c "from populate_db import backfill_null_fields; backfill_null_fields()"
+    """
+    from django.db.models import Q
+
+    def set_if_missing(obj, field, value):
+        current = getattr(obj, field, None)
+        if current in (None, ""):
+            setattr(obj, field, value)
+
+    # Students: ensure contacts and parent names
+    for s in Student.objects.all():
+        if s.parent:
+            # try to infer father/mother from parent's relationship if available
+            rel = getattr(s.parent, 'relationship_to_student', None)
+            if (rel or '').lower() == 'father':
+                set_if_missing(s, 'father_name', s.parent.fullname)
+            elif (rel or '').lower() == 'mother':
+                set_if_missing(s, 'mother_name', s.parent.fullname)
+            # emergency contacts from parent
+            set_if_missing(s, 'emergency_contact_name', s.parent.fullname)
+            set_if_missing(s, 'emergency_contact_relationship', rel or 'Parent')
+            set_if_missing(s, 'emergency_contact_no', getattr(s.parent, 'phone', None) or '+1-555-0000')
+        # generic fallbacks
+        set_if_missing(s, 'father_name', 'Unknown Father')
+        set_if_missing(s, 'mother_name', 'Unknown Mother')
+        set_if_missing(s, 'phone', '+1-555-0100')
+        set_if_missing(s, 'nationality', 'India')
+        set_if_missing(s, 'blood_group', 'O+')
+        set_if_missing(s, 'profile_picture', 'https://i.pravatar.cc/150?img=30')
+        s.save()
+
+    # Parents
+    for p in Parent.objects.all():
+        set_if_missing(p, 'phone', '+1-555-0200')
+        set_if_missing(p, 'occupation', 'Self Employed')
+        set_if_missing(p, 'residential_address', '123 Parent Street, City')
+        set_if_missing(p, 'profile_picture', 'https://i.pravatar.cc/150?img=20')
+        p.save()
+
+    # Teachers
+    for t in Teacher.objects.all():
+        set_if_missing(t, 'phone', '+1-555-0300')
+        set_if_missing(t, 'qualification', 'Graduate')
+        set_if_missing(t, 'residential_address', '123 Teacher Lane, City')
+        set_if_missing(t, 'emergency_contact_name', 'Emergency Contact')
+        set_if_missing(t, 'emergency_contact_relationship', 'Spouse')
+        set_if_missing(t, 'emergency_contact_no', '+1-555-9999')
+        set_if_missing(t, 'nationality', 'India')
+        set_if_missing(t, 'blood_group', 'O+')
+        set_if_missing(t, 'profile_picture', 'https://i.pravatar.cc/150?img=10')
+        t.save()
+
+    # Principal
+    for pr in Principal.objects.all():
+        set_if_missing(pr, 'phone', '+1-555-0400')
+        set_if_missing(pr, 'qualification', 'Masters')
+        set_if_missing(pr, 'profile_picture', 'https://i.pravatar.cc/150?img=2')
+        set_if_missing(pr, 'office_address', "Principal's Office, Main Building")
+        pr.save()
+
+    # Management
+    for m in Management.objects.all():
+        set_if_missing(m, 'phone', '+1-555-0500')
+        set_if_missing(m, 'designation', 'Manager')
+        set_if_missing(m, 'profile_picture', 'https://i.pravatar.cc/150?img=3')
+        set_if_missing(m, 'office_address', 'Admin Building')
+        m.save()
+
+    # Admin
+    for a in Admin.objects.all():
+        set_if_missing(a, 'phone', '+1-555-0600')
+        set_if_missing(a, 'office_address', 'Admin Building, Room 101')
+        set_if_missing(a, 'profile_picture', 'https://i.pravatar.cc/150?img=1')
+        a.save()
+
+    # Transport Details
+    for td in TransportDetails.objects.all():
+        set_if_missing(td, 'route_name', 'Route 1')
+        set_if_missing(td, 'bus_number', 'KA-01-1234')
+        set_if_missing(td, 'pickup_point', 'Main Gate')
+        set_if_missing(td, 'drop_point', 'City Park')
+        set_if_missing(td, 'driver_name', 'Ravi')
+        set_if_missing(td, 'driver_phone', '+91-9999999999')
+        td.save()
+
+    print('Backfill complete.')

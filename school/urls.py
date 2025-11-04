@@ -115,4 +115,28 @@ urlpatterns = [
     path('tasks/', views.TaskViewSet.as_view({'get': 'list', 'post': 'create'}), name='task-list'),
     path('tasks/<int:pk>/', views.TaskViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='task-detail'),
     path('tasks/<int:pk>/mark_done/', views.TaskViewSet.as_view({'post': 'mark_done'}), name='task-mark-done'),
+
+    # Projects
+    path('projects/', views.ProjectViewSet.as_view({'get': 'list', 'post': 'create'}), name='project-list'),
+    path('projects/<int:pk>/', views.ProjectViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='project-detail'),
+
+    # Programs
+    path('programs/', views.ProgramViewSet.as_view({'get': 'list', 'post': 'create'}), name='program-list'),
+    path('programs/<int:pk>/', views.ProgramViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='program-detail'),
+
+    # Activities
+    path('activities/', views.ActivityViewSet.as_view({'get': 'list', 'post': 'create'}), name='activity-list'),
+    path('activities/<int:pk>/', views.ActivityViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='activity-detail'),
+
+    # Reports
+    path('reports/', views.ReportViewSet.as_view({'get': 'list', 'post': 'create'}), name='report-list'),
+    path('reports/<int:pk>/', views.ReportViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='report-detail'),
+
+    # Finance Transactions
+    path('finance/', views.FinanceTransactionViewSet.as_view({'get': 'list', 'post': 'create'}), name='finance-transaction-list'),
+    path('finance/<int:pk>/', views.FinanceTransactionViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='finance-transaction-detail'),
+
+    # Transport Details
+    path('transport_details/', views.TransportDetailsViewSet.as_view({'get': 'list', 'post': 'create'}), name='transport-details-list'),
+    path('transport_details/<int:pk>/', views.TransportDetailsViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='transport-details-detail'),
 ]

@@ -4,7 +4,7 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
-    Assignment, Leave, Task,
+    Assignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails,
 )
 
 UserModel = get_user_model()
@@ -272,4 +272,60 @@ class TaskSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Task
+        fields = '__all__'
+
+
+# ------------------- PROJECT -------------------
+class ProjectSerializer(serializers.ModelSerializer):
+    owner_email = serializers.EmailField(source='owner.email', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Project
+        fields = '__all__'
+
+
+# ------------------- PROGRAM -------------------
+class ProgramSerializer(serializers.ModelSerializer):
+    coordinator_email = serializers.EmailField(source='coordinator.email', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Program
+        fields = '__all__'
+
+
+# ------------------- ACTIVITY -------------------
+class ActivitySerializer(serializers.ModelSerializer):
+    conducted_by_email = serializers.EmailField(source='conducted_by.email', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Activity
+        fields = '__all__'
+
+
+# ------------------- REPORT -------------------
+class ReportSerializer(serializers.ModelSerializer):
+    student_email = serializers.EmailField(source='student.email', read_only=True, allow_null=True)
+    teacher_email = serializers.EmailField(source='teacher.email', read_only=True, allow_null=True)
+    created_by_email = serializers.EmailField(source='created_by.email', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Report
+        fields = '__all__'
+
+
+# ------------------- FINANCE TRANSACTION -------------------
+class FinanceTransactionSerializer(serializers.ModelSerializer):
+    recorded_by_email = serializers.EmailField(source='recorded_by.email', read_only=True, allow_null=True)
+
+    class Meta:
+        model = FinanceTransaction
+        fields = '__all__'
+
+
+# ------------------- TRANSPORT DETAILS -------------------
+class TransportDetailsSerializer(serializers.ModelSerializer):
+    student_email = serializers.EmailField(source='student.email', read_only=True)
+
+    class Meta:
+        model = TransportDetails
         fields = '__all__'
