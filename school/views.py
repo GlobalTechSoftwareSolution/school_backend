@@ -816,6 +816,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
     permission_classes = [AllowAny]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     lookup_field = 'email__email'
     lookup_url_kwarg = 'email'
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
@@ -853,6 +854,180 @@ class DocumentViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 errors.append({'index': idx, 'error': str(e), 'item': item})
         return Response({'created': created, 'updated': updated, 'errors': errors})
+
+    def _upload_doc_to_minio(self, member, file, field_name: str):
+        client = _minio_client_global()
+        if client is None:
+            return None
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        identifier_path = _object_name_for_member_global(member, getattr(member, 'email', None))
+        if identifier_path.startswith('images/'):
+            identifier = identifier_path.split('/', 1)[1].split('/')[0]
+        else:
+            identifier = 'unknown'
+        import os as _os
+        _, ext = _os.path.splitext(getattr(file, 'name', '') or '')
+        if not ext:
+            ext = '.bin'
+        object_name = f"documents/{identifier}/{field_name}{ext}"
+        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+        return f"{base}{object_name}"
+
+    def _member_identifier(self, member) -> str:
+        """Extract a stable identifier for the member used in object paths."""
+        identifier_path = _object_name_for_member_global(member, getattr(member, 'email', None))
+        if identifier_path.startswith('images/'):
+            return identifier_path.split('/', 1)[1].split('/')[0]
+        return 'unknown'
+
+    def _delete_minio_object_by_url(self, url: str):
+        """Delete a MinIO object if the URL points to our BASE_BUCKET_URL."""
+        if not url:
+            return
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        if not url.startswith(base):
+            return  # Not our bucket/path
+        object_name = url[len(base):]
+        client = _minio_client_global()
+        if client is None:
+            return
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        try:
+            client.remove_object(bucket, object_name)
+        except Exception:
+            # Best effort delete; ignore errors
+            pass
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        email = request.POST.get('email')
+        if not email:
+            return Response({'error': 'email is required in form-data'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'error': f'User not found: {email}'}, status=status.HTTP_404_NOT_FOUND)
+
+        allowed_fields = {
+            'tenth','twelth','degree','masters','marks_card','certificates','award','resume','id_proof',
+            'transfer_certificate','study_certificate','conduct_certificate','student_id_card','admit_card',
+            'fee_receipt','achievement_crt','bonafide_crt'
+        }
+
+        # Load existing document to support replace-delete
+        existing = None
+        try:
+            existing = Document.objects.get(email=user)
+        except Document.DoesNotExist:
+            existing = None
+
+        updates = {}
+        for field_name, file in request.FILES.items():
+            if field_name not in allowed_fields:
+                continue
+            # Delete previous object if present
+            if existing is not None:
+                prev_url = getattr(existing, field_name, None)
+                if prev_url:
+                    self._delete_minio_object_by_url(prev_url)
+            url = self._upload_doc_to_minio(user, file, field_name)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            updates[field_name] = url
+
+        if not updates:
+            return Response({'error': 'No valid document files provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        obj, _ = Document.objects.update_or_create(
+            email=user,
+            defaults=updates
+        )
+        return Response(DocumentSerializer(obj).data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, *args, **kwargs):
+        # Upsert behavior: create Document if missing for this email
+        lookup_key = self.lookup_url_kwarg or 'email'
+        email_key = self.kwargs.get(lookup_key)
+        if not email_key:
+            return Response({'error': 'email not provided in URL'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(email=email_key)
+        except User.DoesNotExist:
+            return Response({'error': f'User not found: {email_key}'}, status=status.HTTP_404_NOT_FOUND)
+        instance, _ = Document.objects.get_or_create(email=user)
+        data = request.data.copy()
+
+        allowed_fields = {
+            'tenth','twelth','degree','masters','marks_card','certificates','award','resume','id_proof',
+            'transfer_certificate','study_certificate','conduct_certificate','student_id_card','admit_card',
+            'fee_receipt','achievement_crt','bonafide_crt'
+        }
+
+        # Handle single or multiple file uploads via PATCH
+        file_updates = {}
+        for field_name, file in request.FILES.items():
+            if field_name not in allowed_fields:
+                continue
+            # Delete previous object if present
+            prev_url = getattr(instance, field_name, None)
+            if prev_url:
+                self._delete_minio_object_by_url(prev_url)
+            url = self._upload_doc_to_minio(instance.email, file, field_name)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            file_updates[field_name] = url
+
+        # Merge uploaded URLs into data
+        for k, v in file_updates.items():
+            data[k] = v
+
+        # Handle clearing fields via PATCH (set to empty string or explicit null)
+        for fname in allowed_fields:
+            if fname in data and (data.get(fname) in ['', None, 'null', 'None']):
+                prev_url = getattr(instance, fname, None)
+                if prev_url:
+                    self._delete_minio_object_by_url(prev_url)
+                data[fname] = None
+
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        allowed_fields = {
+            'tenth','twelth','degree','masters','marks_card','certificates','award','resume','id_proof',
+            'transfer_certificate','study_certificate','conduct_certificate','student_id_card','admit_card',
+            'fee_receipt','achievement_crt','bonafide_crt'
+        }
+        # Best-effort delete of all stored objects
+        for fname in allowed_fields:
+            url = getattr(instance, fname, None)
+            if url:
+                self._delete_minio_object_by_url(url)
+        # Also delete any remaining objects under documents/{identifier}/ prefix
+        try:
+            client = _minio_client_global()
+            if client is not None:
+                bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+                identifier = self._member_identifier(instance.email)
+                prefix = f"documents/{identifier}/"
+                for obj in client.list_objects(bucket, prefix=prefix, recursive=True):
+                    try:
+                        object_name = getattr(obj, 'object_name', None)
+                        if object_name:
+                            client.remove_object(bucket, object_name)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return super().destroy(request, *args, **kwargs)
 
 
 # ------------------- ASSIGNMENT VIEWSET -------------------

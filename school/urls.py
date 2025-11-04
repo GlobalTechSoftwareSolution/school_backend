@@ -79,6 +79,7 @@ urlpatterns = [
     # Documents
     path('documents/', views.DocumentViewSet.as_view({'get': 'list', 'post': 'create'}), name='document-list'),
     path('documents/bulk_upsert/', views.DocumentViewSet.as_view({'post': 'bulk_upsert'}), name='document-bulk-upsert'),
+    path('documents/upload/', views.DocumentViewSet.as_view({'post': 'upload'}), name='document-upload'),
     path('documents/<str:email>/', views.DocumentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='document-detail'),
 
     # Notices
