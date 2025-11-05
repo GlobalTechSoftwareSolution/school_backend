@@ -129,18 +129,48 @@ class ParentSerializer(serializers.ModelSerializer):
 
 # ------------------- ATTENDANCE SERIALIZERS -------------------
 class AttendanceSerializer(serializers.ModelSerializer):
+    student_email = serializers.EmailField(source='student.email', read_only=True)
     student_name = serializers.CharField(source='student.fullname', read_only=True)
-    # class_name is a direct field now
+    check_in = serializers.TimeField(format='%H:%M:%S', read_only=True)
+    check_out = serializers.TimeField(format='%H:%M:%S', read_only=True)
+    date = serializers.DateField(format='%Y-%m-%d', read_only=True)
 
     class Meta:
         model = Attendance
-        fields = '__all__'
+        fields = ['id', 'student_email', 'student_name', 'class_name', 'date', 
+                 'check_in', 'check_out', 'status', 'marked_by_role']
+        read_only_fields = ['status']
 
 
 class AttendanceCreateSerializer(serializers.ModelSerializer):
+    student_email = serializers.EmailField(write_only=True)
+    
     class Meta:
         model = Attendance
-        fields = '__all__'
+        fields = ['student_email', 'class_name', 'marked_by_role']
+        extra_kwargs = {
+            'student_email': {'required': True},
+            'class_name': {'required': True},
+            'marked_by_role': {'required': False}
+        }
+    
+    def create(self, validated_data):
+        # Get the student instance from the email
+        student_email = validated_data.pop('student_email')
+        try:
+            student = Student.objects.get(email=student_email)
+        except Student.DoesNotExist:
+            raise serializers.ValidationError({'student_email': 'Student with this email does not exist.'})
+        
+        validated_data['student'] = student
+        return super().create(validated_data)
+
+
+class AttendanceUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attendance
+        fields = ['check_out', 'class_name', 'marked_by_role', 'status']
+        read_only_fields = ['student', 'date', 'check_in']
 
 
 # ------------------- GRADE SERIALIZERS -------------------

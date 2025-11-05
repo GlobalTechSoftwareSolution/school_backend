@@ -34,8 +34,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='feestructure',
             name='class_name',
-            field=models.CharField(default='null', max_length=50),
-            preserve_default=False,
+            field=models.CharField(max_length=50),
         ),
         migrations.AddField(
             model_name='student',
@@ -50,8 +49,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='timetable',
             name='class_name',
-            field=models.CharField(default='null', max_length=50),
-            preserve_default=False,
+            field=models.CharField(max_length=50),
         ),
         migrations.DeleteModel(
             name='Class',

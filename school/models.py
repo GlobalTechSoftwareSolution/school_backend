@@ -228,29 +228,38 @@ class Parent(models.Model):
 
 # ------------------- ATTENDANCE -------------------
 class Attendance(models.Model):
-    student: Student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='attendance_records')  # type: ignore[assignment]
-    class_name = models.CharField(max_length=50, null=True, blank=True)
-    date = models.DateField()
-    status = models.CharField(max_length=20, choices=[
-        ('Present', 'Present'),
-        ('Absent', 'Absent'),
-    ])
-    marked_by_role = models.CharField(max_length=20, choices=[
-        ('Student', 'Student'),
-        ('Teacher', 'Teacher'),
-        ('Principal', 'Principal'),
-        ('Management', 'Management'),
-        ('Admin', 'Admin'),
-    ], default='Admin')
-    remarks = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='attendance_records')
+    class_name = models.CharField(max_length=50)
+    date = models.DateField(auto_now_add=True)
+    check_in = models.TimeField(auto_now_add=True)
+    check_out = models.TimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, default='Present', editable=False)
+    marked_by_role = models.CharField(
+        max_length=20,
+        choices=[
+            ('Student', 'Student'),
+            ('Teacher', 'Teacher'),
+            ('Principal', 'Principal'),
+            ('Management', 'Management'),
+            ('Admin', 'Admin')
+        ],
+        default='Admin'
+    )
 
     class Meta:
         unique_together = ['student', 'date']
-        ordering = ['-date']
+        ordering = ['-date', '-check_in']
 
     def __str__(self):
-        return f"{self.student.fullname} - {self.date} - {self.status}"
+        return f"{self.student.fullname} - {self.class_name} - {self.date} - {self.check_in}"
+
+    def clean(self):
+        if self.check_out and self.check_out < self.check_in:
+            raise ValidationError({'check_out': 'Check-out time cannot be earlier than check-in time'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 # ------------------- GRADE/MARKS -------------------

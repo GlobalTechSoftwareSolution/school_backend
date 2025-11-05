@@ -1,0 +1,26 @@
+{
+  "info": {
+    "_postman_id": "03a13ec0-7265-4793-b24f-b606ecc9b2eb",
+    "name": "API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "7a6ffc32-173a-4203-ae36-4df9b913963f"
+  },
+  "item": [
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://example.com",
+          "protocol": "https",
+          "host": [
+            "example",
+            "com"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

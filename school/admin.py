@@ -118,7 +118,7 @@ class AttendanceAdmin(admin.ModelAdmin):
     search_fields = ('student__fullname', 'student__student_id')
     list_filter = ('status', 'date', 'class_name')
     date_hierarchy = 'date'
-    readonly_fields = ('created_at',)
+    readonly_fields = ()
 
 
 # ------------------- GRADE ADMIN -------------------

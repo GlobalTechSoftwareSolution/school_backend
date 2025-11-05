@@ -10,11 +10,9 @@ from minio import Minio
 from django.utils import timezone
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-import os
-import tempfile
-import requests
-import pytz
+import os, tempfile, requests, pytz
 from geopy.distance import geodesic
+from datetime import datetime, date, timedelta
 try:
     import face_recognition
 except Exception:  # pragma: no cover
@@ -32,7 +30,7 @@ from .serializers import (
     TeacherSerializer, TeacherCreateSerializer,
     PrincipalSerializer, ManagementSerializer, AdminSerializer, ParentSerializer,
     DepartmentSerializer, SubjectSerializer,
-    AttendanceSerializer, AttendanceCreateSerializer,
+    AttendanceSerializer, AttendanceCreateSerializer, AttendanceUpdateSerializer,
     GradeSerializer, GradeCreateSerializer,
     FeeStructureSerializer, FeePaymentSerializer, FeePaymentCreateSerializer,
     TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer,
@@ -486,29 +484,85 @@ class ParentViewSet(viewsets.ModelViewSet):
 
 # ------------------- ATTENDANCE VIEWSET -------------------
 class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = Attendance.objects.all()
+    queryset = Attendance.objects.all().select_related('student')
+    serializer_class = AttendanceSerializer
     permission_classes = [AllowAny]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['student', 'class_name', 'status', 'date']
-    search_fields = ['student__fullname', 'student__student_id']
-    ordering_fields = ['date', 'created_at']
-
+    lookup_field = 'pk'
+    
     def get_serializer_class(self):
-        if self.action in ['create', 'update', 'partial_update']:
+        if self.action == 'create':
             return AttendanceCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return AttendanceUpdateSerializer
         return AttendanceSerializer
 
-    @action(detail=False, methods=['get'])
-    def by_date_range(self, request):
-        """Get attendance by date range"""
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        if start_date and end_date:
-            attendance = self.get_queryset().filter(date__range=[start_date, end_date])  # type: ignore[union-attr]
-            serializer = self.get_serializer(attendance, many=True)
-            return Response(serializer.data)
-        return Response({'error': 'start_date and end_date parameters required'}, status=status.HTTP_400_BAD_REQUEST)
+    def list(self, request):
+        """
+        GET /api/attendance/
+        Returns all attendance records from the database
+        """
+        # Use the default ModelViewSet list behavior
+        return super().list(request)
 
+    @action(detail=False, methods=['post'])
+    def mark(self, request):
+        """
+        POST /api/attendance/mark/
+        Mark attendance for a student
+        Required: student_email, class_name
+        Optional: date, check_in, check_out, marked_by_role
+        """
+        student_email = request.data.get('student_email')
+        class_name = request.data.get('class_name')
+        marked_by_role = request.data.get('marked_by_role', 'Admin')  # Default to 'Admin' if not provided
+        
+        if not all([student_email, class_name]):
+            return Response(
+                {'error': 'student_email and class_name are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            student = Student.objects.get(email=student_email)
+        except Student.DoesNotExist:
+            return Response(
+                {'error': 'Student not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get or create attendance record
+        attendance, created = Attendance.objects.get_or_create(
+            student=student,
+            date=timezone.now().date(),
+            defaults={
+                'class_name': class_name,
+                'check_in': timezone.now().time(),
+                'marked_by_role': marked_by_role
+            }
+        )
+
+        # If updating existing record (e.g., for check-out)
+        if not created:
+            if 'check_out' in request.data and not attendance.check_out:
+                attendance.check_out = request.data['check_out']
+                attendance.save()
+
+        serializer = self.get_serializer(attendance)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
+
+    def partial_update(self, request, pk=None):
+        """
+        PATCH /api/attendance/{pk}/
+        Update an attendance record
+        """
+        attendance = self.get_object()
+        serializer = self.get_serializer(attendance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
 # ------------------- GRADE VIEWSET -------------------
 class GradeViewSet(viewsets.ModelViewSet):
@@ -724,6 +778,9 @@ def school_attendance_view(request):
             except Student.DoesNotExist:
                 return JsonResponse({'status': 'fail', 'message': f'Student not found: {forced_email}'}, status=404)
         elif uploaded_encoding is not None:
+            # Auto-set check_in for face recognition flow
+            check_in = timezone.localtime().time()
+            
             # Iterate over students with profile images and pick the best match by distance
             best_student = None
             best_distance = None
@@ -775,25 +832,23 @@ def school_attendance_view(request):
             status_param = None
         remarks_param = request.POST.get('remarks')
 
-        att, created = Attendance.objects.get_or_create(
+        # Create or update attendance record with auto check_in
+        attendance_data = {
+            'class_name': matched_student.class_name,
+            'check_in': check_in if 'check_in' in locals() else None,
+            'status': 'Present'  # Auto-mark as present for face recognition
+        }
+        attendance, created = Attendance.objects.update_or_create(
             student=matched_student,
             date=today,
-            defaults={
-                'class_name': matched_student.class_name,
-                'status': status_param or 'Present',
-                'marked_by_role': actor_role,
-                'remarks': remarks_param,
-            }
+            defaults=attendance_data
         )
         if not created:
-            # Update status/role if already exists
-            att.status = status_param or 'Present'
-            att.marked_by_role = actor_role
+            attendance.status = status_param or 'Present'
+            # Update class_name if already exists
             if matched_student.class_name:
-                att.class_name = matched_student.class_name
-            if remarks_param is not None:
-                att.remarks = remarks_param
-            att.save()
+                attendance.class_name = matched_student.class_name
+            attendance.save()
 
         return JsonResponse({
             'status': 'success',
