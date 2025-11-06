@@ -530,13 +530,25 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Get current time with seconds precision
+        now = timezone.now()
+        current_time = now.time()
+        current_date = now.date()
+        
+        # Get seconds from the current time
+        seconds = now.second
+        
+        # Get sec value from request data if provided, otherwise use current seconds
+        sec_value = request.data.get('sec', seconds)
+        
         # Get or create attendance record
         attendance, created = Attendance.objects.get_or_create(
             student=student,
-            date=timezone.now().date(),
+            date=current_date,
             defaults={
                 'class_name': class_name,
-                'check_in': timezone.now().time(),
+                'check_in': current_time,
+                'sec': sec_value,
                 'marked_by_role': marked_by_role
             }
         )
@@ -545,6 +557,9 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if not created:
             if 'check_out' in request.data and not attendance.check_out:
                 attendance.check_out = request.data['check_out']
+                # Update seconds if provided
+                if 'sec' in request.data:
+                    attendance.sec = request.data['sec']
                 attendance.save()
 
         serializer = self.get_serializer(attendance)

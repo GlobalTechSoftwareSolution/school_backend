@@ -138,7 +138,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
         fields = ['id', 'student_email', 'student_name', 'class_name', 'date', 
-                 'check_in', 'check_out', 'status', 'marked_by_role']
+                 'check_in', 'check_out', 'sec', 'status', 'marked_by_role', 'remarks']
         read_only_fields = ['status']
 
 
@@ -147,11 +147,13 @@ class AttendanceCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Attendance
-        fields = ['student_email', 'class_name', 'marked_by_role']
+        fields = ['student_email', 'class_name', 'marked_by_role', 'sec', 'remarks']
         extra_kwargs = {
             'student_email': {'required': True},
             'class_name': {'required': True},
-            'marked_by_role': {'required': False}
+            'marked_by_role': {'required': False},
+            'sec': {'required': False},
+            'remarks': {'required': False}
         }
     
     def create(self, validated_data):
@@ -169,7 +171,7 @@ class AttendanceCreateSerializer(serializers.ModelSerializer):
 class AttendanceUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
-        fields = ['check_out', 'class_name', 'marked_by_role', 'status']
+        fields = ['check_out', 'class_name', 'marked_by_role', 'status', 'sec', 'remarks']
         read_only_fields = ['student', 'date', 'check_in']
 
 
@@ -250,9 +252,54 @@ class DocumentSerializer(serializers.ModelSerializer):
 
 # ------------------- NOTICE -------------------
 class NoticeSerializer(serializers.ModelSerializer):
+    notice_by_email = serializers.EmailField(source='notice_by.email', read_only=True, allow_null=True)
+    notice_by_name = serializers.SerializerMethodField()
+    notice_to_email = serializers.EmailField(source='notice_to.email', read_only=True, allow_null=True)
+    notice_to_name = serializers.SerializerMethodField()
+    
     class Meta:
         model = Notice
-        fields = '__all__'
+        exclude = ['email']  # Remove the redundant email field
+    
+    def get_notice_by_name(self, obj):
+        if obj.notice_by:
+            # Try to get the name from the related user profile
+            if hasattr(obj.notice_by, 'admin') and obj.notice_by.admin:
+                return obj.notice_by.admin.fullname
+            elif hasattr(obj.notice_by, 'teacher') and obj.notice_by.teacher:
+                return obj.notice_by.teacher.fullname
+            elif hasattr(obj.notice_by, 'principal') and obj.notice_by.principal:
+                return obj.notice_by.principal.fullname
+            elif hasattr(obj.notice_by, 'management') and obj.notice_by.management:
+                return obj.notice_by.management.fullname
+            elif hasattr(obj.notice_by, 'student') and obj.notice_by.student:
+                return obj.notice_by.student.fullname
+            elif hasattr(obj.notice_by, 'parent') and obj.notice_by.parent:
+                return obj.notice_by.parent.fullname
+            else:
+                # Fallback to email if no name found
+                return obj.notice_by.email
+        return None
+    
+    def get_notice_to_name(self, obj):
+        if obj.notice_to:
+            # Try to get the name from the related user profile
+            if hasattr(obj.notice_to, 'admin') and obj.notice_to.admin:
+                return obj.notice_to.admin.fullname
+            elif hasattr(obj.notice_to, 'teacher') and obj.notice_to.teacher:
+                return obj.notice_to.teacher.fullname
+            elif hasattr(obj.notice_to, 'principal') and obj.notice_to.principal:
+                return obj.notice_to.principal.fullname
+            elif hasattr(obj.notice_to, 'management') and obj.notice_to.management:
+                return obj.notice_to.management.fullname
+            elif hasattr(obj.notice_to, 'student') and obj.notice_to.student:
+                return obj.notice_to.student.fullname
+            elif hasattr(obj.notice_to, 'parent') and obj.notice_to.parent:
+                return obj.notice_to.parent.fullname
+            else:
+                # Fallback to email if no name found
+                return obj.notice_to.email
+        return None
 
 
 # ------------------- ISSUE -------------------
@@ -308,19 +355,61 @@ class TaskSerializer(serializers.ModelSerializer):
 # ------------------- PROJECT -------------------
 class ProjectSerializer(serializers.ModelSerializer):
     owner_email = serializers.EmailField(source='owner.email', read_only=True, allow_null=True)
+    owner_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
-        fields = '__all__'
+        exclude = ['owner']  # Remove the raw owner field to avoid "owner": null in response
+
+    def get_owner_name(self, obj):
+        if obj.owner:
+            # Try to get the name from the related user profile
+            if hasattr(obj.owner, 'admin') and obj.owner.admin:
+                return obj.owner.admin.fullname
+            elif hasattr(obj.owner, 'teacher') and obj.owner.teacher:
+                return obj.owner.teacher.fullname
+            elif hasattr(obj.owner, 'principal') and obj.owner.principal:
+                return obj.owner.principal.fullname
+            elif hasattr(obj.owner, 'management') and obj.owner.management:
+                return obj.owner.management.fullname
+            elif hasattr(obj.owner, 'student') and obj.owner.student:
+                return obj.owner.student.fullname
+            elif hasattr(obj.owner, 'parent') and obj.owner.parent:
+                return obj.owner.parent.fullname
+            else:
+                # Fallback to email if no name found
+                return obj.owner.email
+        return None
 
 
 # ------------------- PROGRAM -------------------
 class ProgramSerializer(serializers.ModelSerializer):
     coordinator_email = serializers.EmailField(source='coordinator.email', read_only=True, allow_null=True)
+    coordinator_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Program
-        fields = '__all__'
+        exclude = ['coordinator']  # Remove the raw coordinator field to avoid "coordinator": "..." in response
+
+    def get_coordinator_name(self, obj):
+        if obj.coordinator:
+            # Try to get the name from the related user profile
+            if hasattr(obj.coordinator, 'admin') and obj.coordinator.admin:
+                return obj.coordinator.admin.fullname
+            elif hasattr(obj.coordinator, 'teacher') and obj.coordinator.teacher:
+                return obj.coordinator.teacher.fullname
+            elif hasattr(obj.coordinator, 'principal') and obj.coordinator.principal:
+                return obj.coordinator.principal.fullname
+            elif hasattr(obj.coordinator, 'management') and obj.coordinator.management:
+                return obj.coordinator.management.fullname
+            elif hasattr(obj.coordinator, 'student') and obj.coordinator.student:
+                return obj.coordinator.student.fullname
+            elif hasattr(obj.coordinator, 'parent') and obj.coordinator.parent:
+                return obj.coordinator.parent.fullname
+            else:
+                # Fallback to email if no name found
+                return obj.coordinator.email
+        return None
 
 
 # ------------------- ACTIVITY -------------------

@@ -231,8 +231,9 @@ class Attendance(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='attendance_records')
     class_name = models.CharField(max_length=50)
     date = models.DateField(auto_now_add=True)
-    check_in = models.TimeField(auto_now_add=True)
-    check_out = models.TimeField(null=True, blank=True)
+    check_in = models.TimeField(auto_now_add=True)  # Includes seconds precision
+    check_out = models.TimeField(null=True, blank=True)  # Includes seconds precision
+    sec = models.CharField(max_length=15, default='NA')  # Phone number field
     status = models.CharField(max_length=20, default='Present', editable=False)
     marked_by_role = models.CharField(
         max_length=20,
@@ -245,6 +246,7 @@ class Attendance(models.Model):
         ],
         default='Admin'
     )
+    remarks = models.TextField(null=True, blank=True)
 
     class Meta:
         unique_together = ['student', 'date']
