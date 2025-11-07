@@ -4,7 +4,7 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
-    Assignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails,
+    Assignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails
 )
 
 UserModel = get_user_model()
@@ -443,8 +443,7 @@ class FinanceTransactionSerializer(serializers.ModelSerializer):
 
 # ------------------- TRANSPORT DETAILS -------------------
 class TransportDetailsSerializer(serializers.ModelSerializer):
-    student_email = serializers.EmailField(source='student.email', read_only=True)
-
+    user_email = serializers.EmailField(source='user.email', read_only=True)  # Changed student_email to user_email and student to user
     class Meta:
         model = TransportDetails
         fields = '__all__'

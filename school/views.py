@@ -1217,13 +1217,14 @@ class FinanceTransactionViewSet(viewsets.ModelViewSet):
 
 
 # ------------------- TRANSPORT DETAILS VIEWSET -------------------
+
 class TransportDetailsViewSet(viewsets.ModelViewSet):
     queryset = TransportDetails.objects.all()
     serializer_class = TransportDetailsSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['student', 'route_name', 'bus_number', 'is_active']
-    search_fields = ['student__fullname', 'route_name', 'bus_number', 'driver_name', 'driver_phone']
+    filterset_fields = ['user', 'route_name', 'bus_number', 'is_active'] # Changed student to user
+    search_fields = ['user__fullname', 'route_name', 'bus_number', 'driver_name', 'driver_phone'] # Changed student__fullname to user__fullname
     ordering_fields = ['created_at', 'route_name']
 
 

@@ -820,8 +820,9 @@ class FinanceTransaction(models.Model):
 
 
 # ------------------- TRANSPORT DETAILS -------------------
+
 class TransportDetails(models.Model):
-    student = models.OneToOneField(Student, on_delete=models.CASCADE, to_field='email', related_name='transport_details')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, to_field='email', related_name='transport_details')
     route_name = models.CharField(max_length=100)
     bus_number = models.CharField(max_length=50, null=True, blank=True)
     pickup_point = models.CharField(max_length=255, null=True, blank=True)
@@ -834,4 +835,4 @@ class TransportDetails(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.student.fullname} - {self.route_name}"
+        return f"{self.user.fullname} - {self.route_name}"
