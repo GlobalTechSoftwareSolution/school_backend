@@ -10,6 +10,7 @@ from minio import Minio
 from django.utils import timezone
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from django.core.mail import send_mail
 import os, tempfile, requests, pytz
 from geopy.distance import geodesic
 from datetime import datetime, date, timedelta
@@ -486,7 +487,7 @@ class ParentViewSet(viewsets.ModelViewSet):
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.all().select_related('student')
     serializer_class = AttendanceSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny]  # No authentication required
     lookup_field = 'pk'
     
     def get_serializer_class(self):
@@ -578,6 +579,160 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def get_students_for_marking(self, request):
+
+        teacher_email = request.data.get('teacher_email')
+        class_name = request.data.get('class_name')
+        section = request.data.get('section')
+
+        if not teacher_email or not class_name:
+            return Response({'error': 'teacher_email and class_name are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Verify the teacher exists
+        try:
+            teacher = Teacher.objects.get(email=teacher_email)
+        except Teacher.DoesNotExist:
+            return Response({'error': 'Teacher not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get students in the class/section
+        students_qs = Student.objects.filter(class_name=class_name)
+        if section:
+            students_qs = students_qs.filter(section=section)
+
+        today = timezone.now().date()
+        students_data = []
+
+        for student in students_qs:
+            # Get or create attendance for today
+            attendance, created = Attendance.objects.get_or_create(
+                student=student,
+                date=today,
+                defaults={
+                    'class_name': class_name,
+                    'marked_by_role': 'Teacher'
+                }
+            )
+            students_data.append({
+                'student_id': student.student_id,
+                'fullname': student.fullname,
+                'email': student.email.email,
+                'status': attendance.status
+            })
+
+        return Response({
+            'teacher_email': teacher_email,
+            'class_name': class_name,
+            'section': section,
+            'date': today,
+            'students': students_data
+        })
+
+    @action(detail=False, methods=['post'])
+    def bulk_update_status(self, request):
+        """
+        POST /api/attendance/bulk_update_status/
+        Bulk update attendance status for students.
+        Body: {
+            "teacher_email": "teacher@example.com",
+            "class_name": "10A",
+            "section": "A",  // optional
+            "date": "2023-10-01",  // optional, defaults to today
+            "updates": [
+                {"student_email": "student1@example.com", "status": "Present"},
+                {"student_email": "student2@example.com", "status": "Absent"}
+            ]
+        }
+        """
+
+        teacher_email = request.data.get('teacher_email')
+        class_name = request.data.get('class_name')
+        section = request.data.get('section')
+        date_str = request.data.get('date')
+        updates = request.data.get('updates', [])
+
+        if not teacher_email or not class_name:
+            return Response({'error': 'teacher_email and class_name required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not updates:
+            return Response({'error': 'updates list required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Verify the teacher exists
+        try:
+            teacher = Teacher.objects.get(email=teacher_email)
+        except Teacher.DoesNotExist:
+            return Response({'error': 'Teacher not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Parse date
+        if date_str:
+            try:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            target_date = timezone.now().date()
+
+        updated_count = 0
+        errors = []
+
+        for update in updates:
+            student_email = update.get('student_email')
+            new_status = update.get('status')
+            if not student_email or new_status not in ['Present', 'Absent']:
+                errors.append({'update': update, 'error': 'Invalid student_email or status'})
+                continue
+
+            try:
+                student = Student.objects.get(email=student_email, class_name=class_name)
+                if section and student.section != section:
+                    errors.append({'student_email': student_email, 'error': 'Student not in specified section'})
+                    continue
+
+                attendance, created = Attendance.objects.get_or_create(
+                    student=student,
+                    date=target_date,
+                    defaults={
+                        'class_name': class_name,
+                        'marked_by_role': 'Teacher'
+                    }
+                )
+                attendance.status = new_status
+                attendance.marked_by_role = 'Teacher'
+                attendance.save()
+                updated_count += 1
+
+                # Send email notification if marked as absent
+                if new_status == 'Absent':
+                    student_email = student.email.email
+                    parent_email = student.parent.email.email if student.parent else None
+
+                    # Email to student
+                    send_mail(
+                        subject='Attendance Notification: Marked Absent',
+                        message=f'Dear {student.fullname},\n\nYou have been marked as absent for {class_name} on {target_date}.\n\nRegards,\nSchool Administration',
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[student_email],
+                        fail_silently=True,
+                    )
+
+                    # Email to parent if available
+                    if parent_email:
+                        send_mail(
+                            subject='Attendance Notification: Your Child Marked Absent',
+                            message=f'Dear Parent,\n\nYour child {student.fullname} has been marked as absent for {class_name} on {target_date}.\n\nRegards,\nSchool Administration',
+                            from_email=settings.DEFAULT_FROM_EMAIL,
+                            recipient_list=[parent_email],
+                            fail_silently=True,
+                        )
+            except Student.DoesNotExist:
+                errors.append({'student_email': student_email, 'error': 'Student not found or not in class'})
+
+        return Response({
+            'teacher_email': teacher_email,
+            'updated_count': updated_count,
+            'date': target_date,
+            'errors': errors
+        })
 
 # ------------------- GRADE VIEWSET -------------------
 class GradeViewSet(viewsets.ModelViewSet):

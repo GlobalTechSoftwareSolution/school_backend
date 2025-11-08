@@ -234,7 +234,7 @@ class Attendance(models.Model):
     check_in = models.TimeField(auto_now_add=True)  # Includes seconds precision
     check_out = models.TimeField(null=True, blank=True)  # Includes seconds precision
     sec = models.CharField(max_length=15, default='NA')  # Phone number field
-    status = models.CharField(max_length=20, default='Present', editable=False)
+    status = models.CharField(max_length=20, default='Absent', editable=False)
     marked_by_role = models.CharField(
         max_length=20,
         choices=[

@@ -52,9 +52,11 @@ urlpatterns = [
     path('parents/<str:pk>/', views.ParentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='parent-detail'),
     
     # Attendance
-    path('attendance/', views.AttendanceViewSet.as_view({'get': 'list'}), name='attendance-list'),
+    path('attendance/', views.AttendanceViewSet.as_view({'get': 'list', 'post': 'create'}), name='attendance-list'),
     path('attendance/<int:pk>/', views.AttendanceViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='attendance-detail'),
     path('attendance/mark/', views.AttendanceViewSet.as_view({'post': 'mark'}), name='attendance-mark'),
+    path('attendance/get_students_for_marking/', views.AttendanceViewSet.as_view({'post': 'get_students_for_marking'}), name='attendance-get-students'),
+    path('mark_students_attendance/', views.AttendanceViewSet.as_view({'post': 'bulk_update_status'}), name='attendance-bulk-update'),
     
     # Grades
     path('grades/', views.GradeViewSet.as_view({'get': 'list', 'post': 'create'}), name='grade-list'),

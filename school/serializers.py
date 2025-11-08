@@ -178,6 +178,8 @@ class AttendanceUpdateSerializer(serializers.ModelSerializer):
 # ------------------- GRADE SERIALIZERS -------------------
 class GradeSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.fullname', read_only=True)
+    student_class = serializers.CharField(source='student.class_name', read_only=True)
+    student_section = serializers.CharField(source='student.section', read_only=True)
     subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
     teacher_name = serializers.CharField(source='teacher.fullname', read_only=True, allow_null=True)
     percentage = serializers.ReadOnlyField()
