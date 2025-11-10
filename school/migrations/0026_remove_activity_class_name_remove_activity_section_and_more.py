@@ -61,37 +61,37 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='activity',
-            name='class_fk',
+            name='class_id',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='activities', to='school.class'),
         ),
         migrations.AddField(
             model_name='assignment',
-            name='class_fk',
+            name='class_id',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='assignments', to='school.class'),
         ),
         migrations.AddField(
             model_name='attendance',
-            name='class_fk',
+            name='class_id',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='attendance_records', to='school.class'),
         ),
         migrations.AddField(
             model_name='feestructure',
-            name='class_fk',
+            name='class_id',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='fee_structures', to='school.class'),
         ),
         migrations.AddField(
             model_name='project',
-            name='class_fk',
+            name='class_id',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='projects', to='school.class'),
         ),
         migrations.AddField(
             model_name='student',
-            name='class_fk',
+            name='class_id',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='students', to='school.class'),
         ),
         migrations.AddField(
             model_name='timetable',
-            name='class_fk',
+            name='class_id',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='timetable_entries', to='school.class'),
         ),
     ]

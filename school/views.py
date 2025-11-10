@@ -230,7 +230,7 @@ class StudentViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_fk', 'gender', 'blood_group', 'father_name', 'mother_name']
+    filterset_fields = ['class_id', 'gender', 'blood_group', 'father_name', 'mother_name']
     search_fields = ['fullname', 'student_id', 'email__email', 'father_name', 'mother_name']
     ordering_fields = ['fullname', 'admission_date']
 
@@ -277,7 +277,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         """Get students by class name (and optional section)."""
         class_id = request.query_params.get('class_id')
         if class_id:
-            qs = self.get_queryset().filter(class_fk=class_id)
+            qs = self.get_queryset().filter(class_id=class_id)
             serializer = self.get_serializer(qs, many=True)
             return Response(serializer.data)
         return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -341,7 +341,7 @@ class TimetableViewSet(viewsets.ModelViewSet):
     queryset = Timetable.objects.all()
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_fk', 'subject', 'teacher', 'day_of_week']
+    filterset_fields = ['class_id', 'subject', 'teacher', 'day_of_week']
     search_fields = ['subject__subject_name', 'teacher__fullname']
     ordering_fields = ['day_of_week', 'start_time']
 
@@ -355,7 +355,7 @@ class TimetableViewSet(viewsets.ModelViewSet):
         """Get timetable by class"""
         class_id = request.query_params.get('class_id')
         if class_id:
-            timetable = self.get_queryset().filter(class_fk=class_id)
+            timetable = self.get_queryset().filter(class_id=class_id)
             serializer = self.get_serializer(timetable, many=True)
             return Response(serializer.data)
         return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -450,7 +450,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
     queryset = Teacher.objects.all()
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['department', 'gender', 'blood_group']
+    filterset_fields = ['department', 'gender', 'blood_group', 'is_classteacher', 'class_id']
     search_fields = ['fullname', 'teacher_id', 'email__email', 'qualification']
     ordering_fields = ['fullname', 'date_joined']
 
@@ -674,7 +674,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             student=student,
             date=current_date,
             defaults={
-                'class_fk': class_obj,
+                'class_id': class_obj,
                 'check_in': current_time,
                 'sec': sec_value,
                 'marked_by_role': marked_by_role
@@ -726,7 +726,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         # Get students in the class/section
         try:
             class_obj = Class.objects.get(class_name=class_name)
-            students_qs = Student.objects.filter(class_fk=class_obj)
+            students_qs = Student.objects.filter(class_id=class_obj)
         except Class.DoesNotExist:
             return Response({'error': f'Class {class_name} not found'}, status=status.HTTP_404_NOT_FOUND)
         if section:
@@ -747,7 +747,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 student=student,
                 date=today,
                 defaults={
-                    'class_fk': class_obj,
+                    'class_id': class_obj,
                     'marked_by_role': 'Teacher'
                 }
             )
@@ -821,7 +821,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
             try:
                 student = Student.objects.get(email=student_email, class_name=class_name)
-                if section and student.class_fk and student.class_fk.sec != section:
+                if section and student.class_id and student.class_id.sec != section:
                     errors.append({'student_email': student_email, 'error': 'Student not in specified section'})
                     continue
 
@@ -836,7 +836,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                     student=student,
                     date=target_date,
                     defaults={
-                        'class_fk': class_obj,
+                        'class_id': class_obj,
                         'marked_by_role': 'Teacher'
                     }
                 )
@@ -909,7 +909,7 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
     serializer_class = FeeStructureSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_fk', 'fee_type', 'frequency']
+    filterset_fields = ['class_id', 'fee_type', 'frequency']
     search_fields = ['fee_type', 'description']
 
     @action(detail=False, methods=['get'])
@@ -917,7 +917,7 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
         """Get fee structure by class"""
         class_id = request.query_params.get('class_id')
         if class_id:
-            fees = self.get_queryset().filter(class_fk=class_id)
+            fees = self.get_queryset().filter(class_id=class_id)
             serializer = self.get_serializer(fees, many=True)
             return Response(serializer.data)
         return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -954,7 +954,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
     serializer_class = ActivitySerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['type', 'conducted_by', 'class_fk', 'date']
+    filterset_fields = ['type', 'conducted_by', 'class_id', 'date']
     search_fields = ['name', 'description', 'conducted_by__email']
     ordering_fields = ['date', 'created_at']
     
@@ -1129,9 +1129,9 @@ def school_attendance_view(request):
 
         # Create or update attendance record with auto check_in
         # Get the Class object
-        class_obj = matched_student.class_fk
+        class_obj = matched_student.class_id
         attendance_data = {
-            'class_fk': class_obj,
+            'class_id': class_obj,
             'check_in': check_in if 'check_in' in locals() else None,
             'status': 'Present'  # Auto-mark as present for face recognition
         }
@@ -1142,9 +1142,9 @@ def school_attendance_view(request):
         )
         if not created:
             attendance.status = status_param or 'Present'
-            # Update class_fk if already exists
-            if matched_student.class_fk:
-                attendance.class_fk = matched_student.class_fk
+            # Update class_id if already exists
+            if matched_student.class_id:
+                attendance.class_id = matched_student.class_id
             attendance.save()
 
         return JsonResponse({
@@ -1388,7 +1388,7 @@ class AssignmentViewSet(viewsets.ModelViewSet):
     serializer_class = AssignmentSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['subject', 'class_fk', 'assigned_by', 'due_date', 'status']
+    filterset_fields = ['subject', 'class_id', 'assigned_by', 'due_date', 'status']
     search_fields = ['title', 'description', 'subject__subject_name', 'assigned_by__email']
     ordering_fields = ['created_at', 'due_date']
 
@@ -1397,7 +1397,7 @@ class AssignmentViewSet(viewsets.ModelViewSet):
         assignment = Assignment.objects.get(pk=response.data['id'])
         # Send emails to students and parents
         try:
-            students = Student.objects.filter(class_fk=assignment.class_fk)
+            students = Student.objects.filter(class_id=assignment.class_id)
         except Class.DoesNotExist:
             students = Student.objects.none()
         for student in students:
@@ -1477,7 +1477,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['status', 'owner', 'class_fk', 'start_date', 'end_date']
+    filterset_fields = ['status', 'owner', 'class_id', 'start_date', 'end_date']
     search_fields = ['title', 'description', 'owner__email']
     ordering_fields = ['created_at', 'start_date', 'end_date', 'status']
 

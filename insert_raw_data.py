@@ -30,7 +30,7 @@ def insert_raw_data():
         print("Inserting Attendance records...")
         for student in students:
             # Get or create the Class object
-            class_name = student.class_fk.class_name if student.class_fk else "Grade 1"
+            class_name = student.class_id.class_name if student.class_id else "Grade 1"
             class_obj, _ = Class.objects.get_or_create(
                 class_name=class_name,
                 defaults={'sec': 'A'}
@@ -38,7 +38,7 @@ def insert_raw_data():
             Attendance.objects.create(
                 student=student,
                 date=date.today(),
-                class_fk=class_obj,
+                class_id=class_obj,
                 status="Present",
                 remarks="Auto-generated"
             )

@@ -71,18 +71,18 @@ class ClassAdmin(admin.ModelAdmin):
 # ------------------- STUDENT ADMIN -------------------
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('student_id', 'fullname', 'email', 'class_fk', 'admission_date')
+    list_display = ('student_id', 'fullname', 'email', 'class_id', 'admission_date')
     search_fields = ('fullname', 'student_id', 'email__email')
-    list_filter = ('class_fk', 'gender', 'admission_date')
+    list_filter = ('class_id', 'gender', 'admission_date')
     readonly_fields = ('email',)
 
 
 # ------------------- TEACHER ADMIN -------------------
 @admin.register(Teacher)
 class TeacherAdmin(admin.ModelAdmin):
-    list_display = ('teacher_id', 'fullname', 'email', 'department', 'date_joined')
+    list_display = ('teacher_id', 'fullname', 'email', 'department', 'class_id', 'sec', 'date_joined')
     search_fields = ('fullname', 'teacher_id', 'email__email')
-    list_filter = ('department', 'date_joined')
+    list_filter = ('department', 'class_id', 'date_joined')
     filter_horizontal = ('subjects',)
     readonly_fields = ('email',)
 
@@ -123,9 +123,9 @@ class ParentAdmin(admin.ModelAdmin):
 # ------------------- ATTENDANCE ADMIN -------------------
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):
-    list_display = ('student', 'class_fk', 'date', 'status')
+    list_display = ('student', 'class_id', 'date', 'status')
     search_fields = ('student__fullname', 'student__student_id')
-    list_filter = ('status', 'date', 'class_fk')
+    list_filter = ('status', 'date', 'class_id')
     date_hierarchy = 'date'
     readonly_fields = ()
 
@@ -142,9 +142,9 @@ class GradeAdmin(admin.ModelAdmin):
 # ------------------- FEE STRUCTURE ADMIN -------------------
 @admin.register(FeeStructure)
 class FeeStructureAdmin(admin.ModelAdmin):
-    list_display = ('class_fk', 'fee_type', 'amount', 'frequency')
-    search_fields = ('class_fk__class_name', 'fee_type')
-    list_filter = ('fee_type', 'frequency', 'class_fk')
+    list_display = ('class_id', 'fee_type', 'amount', 'frequency')
+    search_fields = ('class_id__class_name', 'fee_type')
+    list_filter = ('fee_type', 'frequency', 'class_id')
     readonly_fields = ('created_at', 'updated_at')
 
 
@@ -161,9 +161,9 @@ class FeePaymentAdmin(admin.ModelAdmin):
 # ------------------- TIMETABLE ADMIN -------------------
 @admin.register(Timetable)
 class TimetableAdmin(admin.ModelAdmin):
-    list_display = ('class_fk', 'subject', 'teacher', 'day_of_week', 'start_time', 'end_time', 'room_number')
-    search_fields = ('class_fk__class_name', 'subject__subject_name', 'teacher__fullname')
-    list_filter = ('day_of_week', 'class_fk')
+    list_display = ('class_id', 'subject', 'teacher', 'day_of_week', 'start_time', 'end_time', 'room_number')
+    search_fields = ('class_id__class_name', 'subject__subject_name', 'teacher__fullname')
+    list_filter = ('day_of_week', 'class_id')
     readonly_fields = ('created_at', 'updated_at')
 
 

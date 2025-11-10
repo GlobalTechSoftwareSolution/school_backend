@@ -86,6 +86,7 @@ class TeacherSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='email', read_only=True)
     department_name = serializers.CharField(source='department.department_name', read_only=True, allow_null=True)
     subject_list = SubjectSerializer(source='subjects', many=True, read_only=True)
+    class_name = serializers.CharField(source='class_id.class_name', read_only=True, allow_null=True)
 
     class Meta:
         model = Teacher
@@ -93,9 +94,27 @@ class TeacherSerializer(serializers.ModelSerializer):
 
 
 class TeacherCreateSerializer(serializers.ModelSerializer):
+    subjects = serializers.PrimaryKeyRelatedField(queryset=Subject.objects.all(), many=True, required=False)
+    
     class Meta:
         model = Teacher
         fields = '__all__'
+        
+    def create(self, validated_data):
+        subjects = validated_data.pop('subjects', [])
+        teacher = Teacher.objects.create(**validated_data)
+        if subjects:
+            teacher.subjects.set(subjects)
+        return teacher
+        
+    def update(self, instance, validated_data):
+        subjects = validated_data.pop('subjects', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if subjects is not None:
+            instance.subjects.set(subjects)
+        return instance
 
 
 # ------------------- PRINCIPAL SERIALIZER -------------------
@@ -140,8 +159,8 @@ class ParentSerializer(serializers.ModelSerializer):
 class AttendanceSerializer(serializers.ModelSerializer):
     student_email = serializers.EmailField(source='student.email.email', read_only=True)
     student_name = serializers.CharField(source='student.fullname', read_only=True)
-    class_name = serializers.CharField(source='class_fk.class_name', read_only=True)
-    class_sec = serializers.CharField(source='class_fk.sec', read_only=True)
+    class_name = serializers.CharField(source='class_id.class_name', read_only=True)
+    class_sec = serializers.CharField(source='class_id.sec', read_only=True)
     check_in = serializers.TimeField(format='%H:%M:%S', read_only=True)
     check_out = serializers.TimeField(format='%H:%M:%S', read_only=True)
     date = serializers.DateField(format='%Y-%m-%d', read_only=True)
@@ -185,7 +204,7 @@ class AttendanceCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'class_name': f'Class {class_name} does not exist.'})
         
         validated_data['student'] = student
-        validated_data['class_fk'] = class_obj
+        validated_data['class_id'] = class_obj
         return super().create(validated_data)
 
 
@@ -203,7 +222,7 @@ class AttendanceUpdateSerializer(serializers.ModelSerializer):
         if class_name:
             try:
                 class_obj = Class.objects.get(class_name=class_name)
-                instance.class_fk = class_obj
+                instance.class_id = class_obj
             except Class.DoesNotExist:
                 raise serializers.ValidationError({'class_name': f'Class {class_name} does not exist.'})
         
@@ -213,8 +232,8 @@ class AttendanceUpdateSerializer(serializers.ModelSerializer):
 # ------------------- GRADE SERIALIZERS -------------------
 class GradeSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.fullname', read_only=True)
-    student_class = serializers.CharField(source='student.class_fk.class_name', read_only=True)
-    student_section = serializers.CharField(source='student.class_fk.sec', read_only=True)
+    student_class = serializers.CharField(source='student.class_id.class_name', read_only=True)
+    student_section = serializers.CharField(source='student.class_id.sec', read_only=True)
     subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
     teacher_name = serializers.CharField(source='teacher.fullname', read_only=True, allow_null=True)
     percentage = serializers.ReadOnlyField()
@@ -507,12 +526,12 @@ class ProgramSerializer(serializers.ModelSerializer):
 # ------------------- ACTIVITY -------------------
 class ActivitySerializer(serializers.ModelSerializer):
     conducted_by_email = serializers.EmailField(source='conducted_by.email', read_only=True, allow_null=True)
-    class_fk_name = serializers.CharField(source='class_fk.class_name', read_only=True, allow_null=True)
+    class_id_name = serializers.CharField(source='class_id.class_name', read_only=True, allow_null=True)
 
     class Meta:
         model = Activity
         fields = ['id', 'name', 'description', 'type', 'date', 'conducted_by', 'conducted_by_email', 
-                  'class_fk', 'class_fk_name', 'attachment', 'created_at', 'updated_at']
+                  'class_id', 'class_id_name', 'attachment', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         # Handle the creation of Activity instances
@@ -524,12 +543,12 @@ class ActivitySerializer(serializers.ModelSerializer):
 
 class ActivityCreateSerializer(serializers.ModelSerializer):
     conducted_by_email_input = serializers.EmailField(write_only=True, required=False, allow_null=True)
-    class_fk_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    class_id_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Activity
         fields = ['name', 'description', 'type', 'date', 'conducted_by', 'conducted_by_email_input',
-                  'class_fk', 'class_fk_id', 'attachment']
+                  'class_id', 'class_id_id', 'attachment']
         
     def create(self, validated_data):
         # Handle conducted_by from either field
@@ -539,12 +558,12 @@ class ActivityCreateSerializer(serializers.ModelSerializer):
         # Use conducted_by_email_input if conducted_by is not provided
         update_email = conducted_by_email or conducted_by_email_input
         
-        # Handle class_fk from either field
-        class_fk = validated_data.pop('class_fk', None)
-        class_fk_id = validated_data.pop('class_fk_id', None)
+        # Handle class_id from either field
+        class_id = validated_data.pop('class_id', None)
+        class_id_id = validated_data.pop('class_id_id', None)
         
-        # Use class_fk_id if class_fk is not provided
-        update_class_fk = class_fk or class_fk_id
+        # Use class_id_id if class_id is not provided
+        update_class_id = class_id or class_id_id
         
         instance = super().create(validated_data)
         
@@ -560,16 +579,16 @@ class ActivityCreateSerializer(serializers.ModelSerializer):
                 instance.conducted_by = None
                 instance.save()
                 
-        if update_class_fk is not None:
-            if update_class_fk:
+        if update_class_id is not None:
+            if update_class_id:
                 try:
-                    class_obj = Class.objects.get(id=update_class_fk)
-                    instance.class_fk = class_obj
+                    class_obj = Class.objects.get(id=update_class_id)
+                    instance.class_id = class_obj
                     instance.save()
                 except Class.DoesNotExist:
-                    raise serializers.ValidationError({'class_fk': f'Class with id {update_class_fk} does not exist.'})
+                    raise serializers.ValidationError({'class_id': f'Class with id {update_class_id} does not exist.'})
             else:
-                instance.class_fk = None
+                instance.class_id = None
                 instance.save()
         
         return instance
