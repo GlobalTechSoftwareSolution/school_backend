@@ -4,7 +4,7 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
-    Assignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails
+    Assignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class
 )
 
 UserModel = get_user_model()
@@ -55,9 +55,18 @@ class SubjectSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+# ------------------- CLASS SERIALIZER -------------------
+class ClassSerializer(serializers.ModelSerializer):
+    class_teacher_name = serializers.CharField(source='class_teacher.fullname', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = Class
+        fields = '__all__'
+
+
 # ------------------- STUDENT SERIALIZERS -------------------
 class StudentSerializer(serializers.ModelSerializer):
-    user_details = UserSerializer(source='email', read_only=True)
+    email = serializers.EmailField(source='email.email', read_only=True)
     # class_name and section are direct fields now
     parent_name = serializers.CharField(source='parent.fullname', read_only=True, allow_null=True)
 
@@ -129,21 +138,24 @@ class ParentSerializer(serializers.ModelSerializer):
 
 # ------------------- ATTENDANCE SERIALIZERS -------------------
 class AttendanceSerializer(serializers.ModelSerializer):
-    student_email = serializers.EmailField(source='student.email', read_only=True)
+    student_email = serializers.EmailField(source='student.email.email', read_only=True)
     student_name = serializers.CharField(source='student.fullname', read_only=True)
+    class_name = serializers.CharField(source='class_fk.class_name', read_only=True)
+    class_sec = serializers.CharField(source='class_fk.sec', read_only=True)
     check_in = serializers.TimeField(format='%H:%M:%S', read_only=True)
     check_out = serializers.TimeField(format='%H:%M:%S', read_only=True)
     date = serializers.DateField(format='%Y-%m-%d', read_only=True)
 
     class Meta:
         model = Attendance
-        fields = ['id', 'student_email', 'student_name', 'class_name', 'date', 
+        fields = ['id', 'student_email', 'student_name', 'class_name', 'class_sec', 'date', 
                  'check_in', 'check_out', 'sec', 'status', 'marked_by_role', 'remarks']
         read_only_fields = ['status']
 
 
 class AttendanceCreateSerializer(serializers.ModelSerializer):
     student_email = serializers.EmailField(write_only=True)
+    class_name = serializers.CharField(write_only=True)
     
     class Meta:
         model = Attendance
@@ -159,27 +171,50 @@ class AttendanceCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # Get the student instance from the email
         student_email = validated_data.pop('student_email')
+        class_name = validated_data.pop('class_name')
+        
         try:
             student = Student.objects.get(email=student_email)
         except Student.DoesNotExist:
             raise serializers.ValidationError({'student_email': 'Student with this email does not exist.'})
         
+        # Get the Class object
+        try:
+            class_obj = Class.objects.get(class_name=class_name)
+        except Class.DoesNotExist:
+            raise serializers.ValidationError({'class_name': f'Class {class_name} does not exist.'})
+        
         validated_data['student'] = student
+        validated_data['class_fk'] = class_obj
         return super().create(validated_data)
 
 
 class AttendanceUpdateSerializer(serializers.ModelSerializer):
+    class_name = serializers.CharField(write_only=True, required=False)
+    
     class Meta:
         model = Attendance
         fields = ['check_out', 'class_name', 'marked_by_role', 'status', 'sec', 'remarks']
         read_only_fields = ['student', 'date', 'check_in']
+    
+    def update(self, instance, validated_data):
+        # Handle class_name if provided
+        class_name = validated_data.pop('class_name', None)
+        if class_name:
+            try:
+                class_obj = Class.objects.get(class_name=class_name)
+                instance.class_fk = class_obj
+            except Class.DoesNotExist:
+                raise serializers.ValidationError({'class_name': f'Class {class_name} does not exist.'})
+        
+        return super().update(instance, validated_data)
 
 
 # ------------------- GRADE SERIALIZERS -------------------
 class GradeSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.fullname', read_only=True)
-    student_class = serializers.CharField(source='student.class_name', read_only=True)
-    student_section = serializers.CharField(source='student.section', read_only=True)
+    student_class = serializers.CharField(source='student.class_fk.class_name', read_only=True)
+    student_section = serializers.CharField(source='student.class_fk.sec', read_only=True)
     subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
     teacher_name = serializers.CharField(source='teacher.fullname', read_only=True, allow_null=True)
     percentage = serializers.ReadOnlyField()
@@ -258,10 +293,17 @@ class NoticeSerializer(serializers.ModelSerializer):
     notice_by_name = serializers.SerializerMethodField()
     notice_to_email = serializers.EmailField(source='notice_to.email', read_only=True, allow_null=True)
     notice_to_name = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Notice
-        exclude = ['email']  # Remove the redundant email field
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # For bulk_create, allow email as string input
+        if hasattr(self, 'context') and self.context.get('bulk_create'):
+            self.fields['email'] = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), slug_field='email', write_only=True, required=True)
+            self.fields['notice_by'] = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), slug_field='email', write_only=True, required=True)
     
     def get_notice_by_name(self, obj):
         if obj.notice_by:
@@ -328,6 +370,7 @@ class AwardSerializer(serializers.ModelSerializer):
 # ------------------- ASSIGNMENT -------------------
 class AssignmentSerializer(serializers.ModelSerializer):
     subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
+    assigned_by_email = serializers.EmailField(source='assigned_by.email', read_only=True, allow_null=True)
 
     class Meta:
         model = Assignment
@@ -388,10 +431,12 @@ class ProjectSerializer(serializers.ModelSerializer):
 class ProgramSerializer(serializers.ModelSerializer):
     coordinator_email = serializers.EmailField(source='coordinator.email', read_only=True, allow_null=True)
     coordinator_name = serializers.SerializerMethodField()
+    # Add a writable field for coordinator updates
+    coordinator = serializers.EmailField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Program
-        exclude = ['coordinator']  # Remove the raw coordinator field to avoid "coordinator": "..." in response
+        fields = ['id', 'name', 'description', 'start_date', 'end_date', 'coordinator', 'status', 'created_at', 'updated_at', 'coordinator_email', 'coordinator_name']
 
     def get_coordinator_name(self, obj):
         if obj.coordinator:
@@ -412,6 +457,21 @@ class ProgramSerializer(serializers.ModelSerializer):
                 # Fallback to email if no name found
                 return obj.coordinator.email
         return None
+
+    def update(self, instance, validated_data):
+        # Handle coordinator updates
+        coordinator_email = validated_data.pop('coordinator', None)
+        if coordinator_email is not None:
+            if coordinator_email:
+                try:
+                    coordinator_user = User.objects.get(email=coordinator_email)
+                    instance.coordinator = coordinator_user
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({'coordinator': f'User with email {coordinator_email} does not exist.'})
+            else:
+                instance.coordinator = None
+        
+        return super().update(instance, validated_data)
 
 
 # ------------------- ACTIVITY -------------------

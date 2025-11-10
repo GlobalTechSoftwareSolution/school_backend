@@ -75,8 +75,21 @@ class Department(models.Model):
         return str(self.department_name)
 
 
-# ------------------- CLASS/GRADE -------------------
-# Removed discrete Class model; using string fields on Student/FeeStructure/Timetable
+# ------------------- CLASS -------------------
+class Class(models.Model):
+    class_name = models.CharField(max_length=50)
+    sec = models.CharField(max_length=10)  # Section
+    class_teacher = models.ForeignKey('Teacher', on_delete=models.SET_NULL, null=True, blank=True, to_field='email', related_name='classes_taught')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Class"
+        verbose_name_plural = "Classes"
+        unique_together = ['class_name', 'sec']
+
+    def __str__(self):
+        return f"{self.class_name} - {self.sec}"
 
 
 # ------------------- SUBJECT -------------------
@@ -100,8 +113,7 @@ class Student(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=20, null=True, blank=True)
     admission_date = models.DateField(null=True, blank=True)
-    class_name = models.CharField(max_length=50, null=True, blank=True)
-    section = models.CharField(max_length=10, null=True, blank=True)
+    class_fk = models.ForeignKey(Class, on_delete=models.SET_NULL, null=True, blank=True, related_name='students')
     parent = models.ForeignKey('Parent', on_delete=models.SET_NULL, null=True, blank=True, related_name='children', to_field='email')
     profile_picture = models.URLField(null=True, blank=True)
     residential_address = models.TextField(null=True, blank=True)
@@ -125,7 +137,8 @@ class Student(models.Model):
     blood_group = models.CharField(max_length=3, choices=BLOOD_GROUP_CHOICES, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.fullname} ({self.student_id})"
+        class_info = f"{self.class_fk.class_name} - {self.class_fk.sec}" if self.class_fk else "No Class"
+        return f"{self.fullname} ({self.student_id}) - {class_info}"
 
 
 # ------------------- TEACHER -------------------
@@ -229,7 +242,7 @@ class Parent(models.Model):
 # ------------------- ATTENDANCE -------------------
 class Attendance(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='attendance_records')
-    class_name = models.CharField(max_length=50)
+    class_fk = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='attendance_records', null=True, blank=True)
     date = models.DateField(auto_now_add=True)
     check_in = models.TimeField(auto_now_add=True)  # Includes seconds precision
     check_out = models.TimeField(null=True, blank=True)  # Includes seconds precision
@@ -253,7 +266,7 @@ class Attendance(models.Model):
         ordering = ['-date', '-check_in']
 
     def __str__(self):
-        return f"{self.student.fullname} - {self.class_name} - {self.date} - {self.check_in}"
+        return f"{self.student.fullname} - {self.class_fk.class_name} {self.class_fk.sec} - {self.date} - {self.check_in}"
 
     def clean(self):
         if self.check_out and self.check_out < self.check_in:
@@ -295,7 +308,7 @@ class Grade(models.Model):
 
 # ------------------- FEE STRUCTURE -------------------
 class FeeStructure(models.Model):
-    class_name = models.CharField(max_length=50)
+    class_fk = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='fee_structures', null=True, blank=True)
     fee_type = models.CharField(max_length=100, choices=[
         ('Tuition', 'Tuition Fee'),
         ('Transport', 'Transport Fee'),
@@ -316,7 +329,7 @@ class FeeStructure(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.class_name} - {self.fee_type} - {self.amount}"
+        return f"{self.class_fk.class_name} {self.class_fk.sec} - {self.fee_type} - {self.amount}"
 
 
 # ------------------- FEE PAYMENT -------------------
@@ -401,8 +414,7 @@ class FeePayment(models.Model):
 # ------------------- TIMETABLE -------------------
 class Timetable(models.Model):
 
-    class_name = models.CharField(max_length=50)
-    section = models.CharField(max_length=10, null=True, blank=True)  # Added section field
+    class_fk = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='timetable_entries', null=True, blank=True)
 
     subject: Subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='timetable_entries')  # type: ignore[assignment]
 
@@ -427,7 +439,7 @@ class Timetable(models.Model):
         ordering = ['day_of_week', 'start_time']
 
     def __str__(self):
-        return f"{self.class_name} - {self.subject.subject_name} - {self.day_of_week} {self.start_time}-{self.end_time}"
+        return f"{self.class_fk.class_name} {self.class_fk.sec} - {self.subject.subject_name} - {self.day_of_week} {self.start_time}-{self.end_time}"
 
 
 class Assignment(models.Model):
@@ -442,8 +454,7 @@ class Assignment(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
     subject: Subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='assignments')  # type: ignore[assignment]
-    class_name = models.CharField(max_length=50, null=True, blank=True)
-    section = models.CharField(max_length=10, null=True, blank=True)  # Added section field
+    class_fk = models.ForeignKey(Class, on_delete=models.SET_NULL, null=True, blank=True, related_name='assignments')
     assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='assignments_assigned')
     due_date = models.DateField(null=True, blank=True)
     attachment = models.URLField(null=True, blank=True)
@@ -695,8 +706,7 @@ class Project(models.Model):
     end_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Planned')
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='projects_owned')
-    class_name = models.CharField(max_length=50, null=True, blank=True)
-    section = models.CharField(max_length=10, null=True, blank=True)
+    class_fk = models.ForeignKey(Class, on_delete=models.SET_NULL, null=True, blank=True, related_name='projects')
     attachment = models.URLField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -747,8 +757,7 @@ class Activity(models.Model):
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='Other')
     date = models.DateField(null=True, blank=True)
     conducted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='activities_conducted')
-    class_name = models.CharField(max_length=50, null=True, blank=True)
-    section = models.CharField(max_length=10, null=True, blank=True)
+    class_fk = models.ForeignKey(Class, on_delete=models.SET_NULL, null=True, blank=True, related_name='activities')
     attachment = models.URLField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

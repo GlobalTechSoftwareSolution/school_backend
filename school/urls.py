@@ -25,6 +25,10 @@ urlpatterns = [
     path('subjects/', views.SubjectViewSet.as_view({'get': 'list', 'post': 'create'}), name='subject-list'),
     path('subjects/<int:pk>/', views.SubjectViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='subject-detail'),
     
+    # Classes
+    path('classes/', views.ClassViewSet.as_view({'get': 'list', 'post': 'create'}), name='class-list'),
+    path('classes/<int:pk>/', views.ClassViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='class-detail'),
+    
     # Students
     path('students/', views.StudentViewSet.as_view({'get': 'list', 'post': 'create'}), name='student-list'),
     path('students/<str:pk>/', views.StudentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='student-detail'),

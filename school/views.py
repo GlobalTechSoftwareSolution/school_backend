@@ -23,14 +23,14 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award, Assignment, Leave, Task,
-    Project, Program, Activity, Report, FinanceTransaction, TransportDetails,
+    Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class,
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer,
     StudentSerializer, StudentCreateSerializer,
     TeacherSerializer, TeacherCreateSerializer,
     PrincipalSerializer, ManagementSerializer, AdminSerializer, ParentSerializer,
-    DepartmentSerializer, SubjectSerializer,
+    DepartmentSerializer, SubjectSerializer, ClassSerializer,
     AttendanceSerializer, AttendanceCreateSerializer, AttendanceUpdateSerializer,
     GradeSerializer, GradeCreateSerializer,
     FeeStructureSerializer, FeePaymentSerializer, FeePaymentCreateSerializer,
@@ -214,13 +214,23 @@ class SubjectViewSet(viewsets.ModelViewSet):
     ordering_fields = ['subject_name', 'created_at']
 
 
+# ------------------- CLASS VIEWSET -------------------
+class ClassViewSet(viewsets.ModelViewSet):
+    queryset = Class.objects.all()
+    serializer_class = ClassSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['class_name', 'sec']
+    ordering_fields = ['class_name', 'created_at']
+
+
 # ------------------- STUDENT VIEWSET -------------------
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
     permission_classes = [AllowAny]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_name', 'section', 'gender', 'blood_group', 'father_name', 'mother_name']
+    filterset_fields = ['class_fk', 'gender', 'blood_group', 'father_name', 'mother_name']
     search_fields = ['fullname', 'student_id', 'email__email', 'father_name', 'mother_name']
     ordering_fields = ['fullname', 'admission_date']
 
@@ -232,14 +242,13 @@ class StudentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def by_class(self, request):
         """Get students by class name (and optional section)."""
-        class_name = request.query_params.get('class_name')
-        section = request.query_params.get('section')
-        if class_name:
-            qs = self.get_queryset().filter(class_name=class_name)
-            if section:
-                qs = qs.filter(section=section)
+        class_id = request.query_params.get('class_id')
+        if class_id:
+            qs = self.get_queryset().filter(class_fk=class_id)
             serializer = self.get_serializer(qs, many=True)
             return Response(serializer.data)
+        return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response({'error': 'class_name parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['patch'])
@@ -543,11 +552,20 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         sec_value = request.data.get('sec', seconds)
         
         # Get or create attendance record
+        # First, get the Class object
+        try:
+            class_obj = Class.objects.get(class_name=class_name)
+        except Class.DoesNotExist:
+            return Response(
+                {'error': f'Class {class_name} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
         attendance, created = Attendance.objects.get_or_create(
             student=student,
             date=current_date,
             defaults={
-                'class_name': class_name,
+                'class_fk': class_obj,
                 'check_in': current_time,
                 'sec': sec_value,
                 'marked_by_role': marked_by_role
@@ -597,12 +615,22 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Teacher not found'}, status=status.HTTP_404_NOT_FOUND)
 
         # Get students in the class/section
-        students_qs = Student.objects.filter(class_name=class_name)
+        try:
+            class_obj = Class.objects.get(class_name=class_name)
+            students_qs = Student.objects.filter(class_fk=class_obj)
+        except Class.DoesNotExist:
+            return Response({'error': f'Class {class_name} not found'}, status=status.HTTP_404_NOT_FOUND)
         if section:
             students_qs = students_qs.filter(section=section)
 
         today = timezone.now().date()
         students_data = []
+
+        # Get the Class object
+        try:
+            class_obj = Class.objects.get(class_name=class_name)
+        except Class.DoesNotExist:
+            return Response({'error': f'Class {class_name} not found'}, status=status.HTTP_404_NOT_FOUND)
 
         for student in students_qs:
             # Get or create attendance for today
@@ -610,7 +638,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 student=student,
                 date=today,
                 defaults={
-                    'class_name': class_name,
+                    'class_fk': class_obj,
                     'marked_by_role': 'Teacher'
                 }
             )
@@ -684,15 +712,22 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
             try:
                 student = Student.objects.get(email=student_email, class_name=class_name)
-                if section and student.section != section:
+                if section and student.class_fk and student.class_fk.sec != section:
                     errors.append({'student_email': student_email, 'error': 'Student not in specified section'})
+                    continue
+
+                # Get the Class object
+                try:
+                    class_obj = Class.objects.get(class_name=class_name)
+                except Class.DoesNotExist:
+                    errors.append({'student_email': student_email, 'error': f'Class {class_name} not found'})
                     continue
 
                 attendance, created = Attendance.objects.get_or_create(
                     student=student,
                     date=target_date,
                     defaults={
-                        'class_name': class_name,
+                        'class_fk': class_obj,
                         'marked_by_role': 'Teacher'
                     }
                 )
@@ -1003,8 +1038,10 @@ def school_attendance_view(request):
         remarks_param = request.POST.get('remarks')
 
         # Create or update attendance record with auto check_in
+        # Get the Class object
+        class_obj = matched_student.class_fk
         attendance_data = {
-            'class_name': matched_student.class_name,
+            'class_fk': class_obj,
             'check_in': check_in if 'check_in' in locals() else None,
             'status': 'Present'  # Auto-mark as present for face recognition
         }
@@ -1015,9 +1052,9 @@ def school_attendance_view(request):
         )
         if not created:
             attendance.status = status_param or 'Present'
-            # Update class_name if already exists
-            if matched_student.class_name:
-                attendance.class_name = matched_student.class_name
+            # Update class_fk if already exists
+            if matched_student.class_fk:
+                attendance.class_fk = matched_student.class_fk
             attendance.save()
 
         return JsonResponse({
@@ -1261,9 +1298,37 @@ class AssignmentViewSet(viewsets.ModelViewSet):
     serializer_class = AssignmentSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['subject', 'class_name', 'section', 'assigned_by', 'due_date', 'status']
+    filterset_fields = ['subject', 'class_fk', 'assigned_by', 'due_date', 'status']
     search_fields = ['title', 'description', 'subject__subject_name', 'assigned_by__email']
     ordering_fields = ['created_at', 'due_date']
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        assignment = Assignment.objects.get(pk=response.data['id'])
+        # Send emails to students and parents
+        try:
+            students = Student.objects.filter(class_fk=assignment.class_fk)
+        except Class.DoesNotExist:
+            students = Student.objects.none()
+        for student in students:
+            # Email to student
+            send_mail(
+                subject=f'New Assignment: {assignment.title}',
+                message=f'Dear {student.fullname},\n\nA new assignment has been assigned to you.\n\nTitle: {assignment.title}\nSubject: {assignment.subject.subject_name}\nDescription: {assignment.description or ""}\nDue Date: {assignment.due_date or "N/A"}\n\nRegards,\nSchool Administration',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[student.email.email],
+                fail_silently=True,
+            )
+            # Email to parent if available
+            if student.parent:
+                send_mail(
+                    subject=f'New Assignment for Your Child: {assignment.title}',
+                    message=f'Dear Parent,\n\nA new assignment has been assigned to your child {student.fullname}.\n\nTitle: {assignment.title}\nSubject: {assignment.subject.subject_name}\nDescription: {assignment.description or ""}\nDue Date: {assignment.due_date or "N/A"}\n\nRegards,\nSchool Administration',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[student.parent.email.email],
+                    fail_silently=True,
+                )
+        return response
 
 
 # ------------------- LEAVE VIEWSET -------------------
@@ -1393,14 +1458,37 @@ class NoticeViewSet(viewsets.ModelViewSet):
     search_fields = ['title', 'message', 'email__email']
     ordering_fields = ['posted_date', 'important']
 
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        notice = Notice.objects.get(pk=response.data['id'])
+        if notice.email:
+            send_mail(
+                subject=f'Notice: {notice.title}',
+                message=notice.message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[notice.email.email],
+                fail_silently=True,
+            )
+        return response
+
     @action(detail=False, methods=['post'])
     def bulk_create(self, request):
         """Create multiple notices. Expects JSON array. Does not upsert."""
         if not isinstance(request.data, list):
             return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
-        ser = self.get_serializer(data=request.data, many=True)
+        ser = self.get_serializer(data=request.data, many=True, context={'bulk_create': True})
         ser.is_valid(raise_exception=True)
-        self.perform_create(ser)
+        notices = ser.save()
+        # Send emails after bulk creation
+        for notice in notices:
+            if notice.email:
+                send_mail(
+                    subject=f'Notice: {notice.title}',
+                    message=notice.message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[notice.email.email],
+                    fail_silently=True,
+                )
         return Response({'created': len(ser.data)}, status=status.HTTP_201_CREATED)
 
 
