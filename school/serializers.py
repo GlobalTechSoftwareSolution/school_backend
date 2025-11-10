@@ -431,12 +431,13 @@ class ProjectSerializer(serializers.ModelSerializer):
 class ProgramSerializer(serializers.ModelSerializer):
     coordinator_email = serializers.EmailField(source='coordinator.email', read_only=True, allow_null=True)
     coordinator_name = serializers.SerializerMethodField()
-    # Add a writable field for coordinator updates
+    # Add writable fields for coordinator updates
     coordinator = serializers.EmailField(write_only=True, required=False, allow_null=True)
+    coordinator_email_input = serializers.EmailField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Program
-        fields = ['id', 'name', 'description', 'start_date', 'end_date', 'coordinator', 'status', 'created_at', 'updated_at', 'coordinator_email', 'coordinator_name']
+        fields = ['id', 'name', 'description', 'start_date', 'end_date', 'coordinator', 'coordinator_email_input', 'status', 'created_at', 'updated_at', 'coordinator_email', 'coordinator_name']
 
     def get_coordinator_name(self, obj):
         if obj.coordinator:
@@ -459,19 +460,48 @@ class ProgramSerializer(serializers.ModelSerializer):
         return None
 
     def update(self, instance, validated_data):
-        # Handle coordinator updates
+        # Handle coordinator updates from either field
         coordinator_email = validated_data.pop('coordinator', None)
-        if coordinator_email is not None:
-            if coordinator_email:
+        coordinator_email_input = validated_data.pop('coordinator_email_input', None)
+        
+        # Use coordinator_email_input if coordinator is not provided
+        update_email = coordinator_email or coordinator_email_input
+        
+        if update_email is not None:
+            if update_email:
                 try:
-                    coordinator_user = User.objects.get(email=coordinator_email)
+                    coordinator_user = User.objects.get(email=update_email)
                     instance.coordinator = coordinator_user
                 except User.DoesNotExist:
-                    raise serializers.ValidationError({'coordinator': f'User with email {coordinator_email} does not exist.'})
+                    raise serializers.ValidationError({'coordinator': f'User with email {update_email} does not exist.'})
             else:
                 instance.coordinator = None
         
         return super().update(instance, validated_data)
+
+    def create(self, validated_data):
+        # Handle coordinator updates from either field
+        coordinator_email = validated_data.pop('coordinator', None)
+        coordinator_email_input = validated_data.pop('coordinator_email_input', None)
+        
+        # Use coordinator_email_input if coordinator is not provided
+        update_email = coordinator_email or coordinator_email_input
+        
+        instance = super().create(validated_data)
+        
+        if update_email is not None:
+            if update_email:
+                try:
+                    coordinator_user = User.objects.get(email=update_email)
+                    instance.coordinator = coordinator_user
+                    instance.save()
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({'coordinator': f'User with email {update_email} does not exist.'})
+            else:
+                instance.coordinator = None
+                instance.save()
+        
+        return instance
 
 
 # ------------------- ACTIVITY -------------------

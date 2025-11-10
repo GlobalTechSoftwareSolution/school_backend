@@ -1387,8 +1387,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['status', 'owner', 'class_name', 'section', 'start_date', 'end_date']
-    search_fields = ['title', 'description', 'owner__email', 'class_name', 'section']
+    filterset_fields = ['status', 'owner', 'class_fk', 'start_date', 'end_date']
+    search_fields = ['title', 'description', 'owner__email']
     ordering_fields = ['created_at', 'start_date', 'end_date', 'status']
 
 
