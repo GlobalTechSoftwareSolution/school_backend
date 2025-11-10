@@ -37,7 +37,7 @@ from .serializers import (
     TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer,
     DocumentSerializer, NoticeSerializer, IssueSerializer, HolidaySerializer, AwardSerializer,
     AssignmentSerializer, LeaveSerializer, TaskSerializer,
-    ProjectSerializer, ProgramSerializer, ActivitySerializer, ReportSerializer,
+    ProjectSerializer, ProgramSerializer, ActivitySerializer, ActivityCreateSerializer, ReportSerializer,
     FinanceTransactionSerializer, TransportDetailsSerializer,
 )
 
@@ -239,6 +239,39 @@ class StudentViewSet(viewsets.ModelViewSet):
             return StudentCreateSerializer
         return StudentSerializer
 
+    def _minio_client(self):
+        if Minio is None:
+            return None
+        cfg = settings.MINIO_STORAGE
+        return Minio(
+            cfg['ENDPOINT'],
+            access_key=cfg['ACCESS_KEY'],
+            secret_key=cfg['SECRET_KEY'],
+            secure=cfg.get('USE_SSL', True),
+        )
+
+    def _object_name_for_student(self, student, fallback_email: str | None = None, fallback_student_id: str | None = None) -> str:
+        identifier = None
+        if hasattr(student, 'student_id') and student.student_id:
+            identifier = student.student_id
+        elif hasattr(student, 'email') and hasattr(student.email, 'email'):
+            identifier = student.email.email.split('@')[0]
+        else:
+            identifier = (fallback_student_id or (fallback_email.split('@')[0] if fallback_email else 'unknown'))
+        return f"images/{identifier}/profile.jpg"
+
+    def _upload_file_to_minio(self, student, file, fallback_email: str | None = None, fallback_student_id: str | None = None):
+        client = self._minio_client()
+        if client is None:
+            return None
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        object_name = self._object_name_for_student(student, fallback_email, fallback_student_id)
+        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        return f"{base}{object_name}"
+
     @action(detail=False, methods=['get'])
     def by_class(self, request):
         """Get students by class name (and optional section)."""
@@ -261,6 +294,82 @@ class StudentViewSet(viewsets.ModelViewSet):
         if url is None:
             return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         student.profile_picture = url
+        student.save()
+        serializer = self.get_serializer(student)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        if file:
+            url = self._upload_file_to_minio(instance, file)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        # For create, we may not have a Student instance yet; use fallbacks from request data
+        fallback_email = data.get('email')
+        fallback_student_id = data.get('student_id')
+        if file:
+            # No Student instance yet; rely on fallback values for object path
+            url = self._upload_file_to_minio(None, file, fallback_email=fallback_email, fallback_student_id=fallback_student_id)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+# ------------------- TIMETABLE VIEWSET -------------------
+class TimetableViewSet(viewsets.ModelViewSet):
+    queryset = Timetable.objects.all()
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['class_fk', 'subject', 'teacher', 'day_of_week']
+    search_fields = ['subject__subject_name', 'teacher__fullname']
+    ordering_fields = ['day_of_week', 'start_time']
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return TimetableCreateSerializer
+        return TimetableSerializer
+
+    @action(detail=False, methods=['get'])
+    def by_class(self, request):
+        """Get timetable by class"""
+        class_id = request.query_params.get('class_id')
+        if class_id:
+            timetable = self.get_queryset().filter(class_fk=class_id)
+            serializer = self.get_serializer(timetable, many=True)
+            return Response(serializer.data)
+        return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def by_teacher(self, request):
+        """Get timetable by teacher"""
+        teacher_email = request.query_params.get('teacher_email')
+        if teacher_email:
+            timetable = self.get_queryset().filter(teacher__email=teacher_email)  # type: ignore[union-attr]
+            serializer = self.get_serializer(timetable, many=True)
+            return Response(serializer.data)
+        return Response({'error': 'teacher_email parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+
         student.save()
         serializer = self.get_serializer(student)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -800,18 +909,18 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
     serializer_class = FeeStructureSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_name', 'fee_type', 'frequency']
+    filterset_fields = ['class_fk', 'fee_type', 'frequency']
     search_fields = ['fee_type', 'description']
 
     @action(detail=False, methods=['get'])
     def by_class(self, request):
-        """Get fee structure by class name"""
-        class_name = request.query_params.get('class_name')
-        if class_name:
-            fees = self.get_queryset().filter(class_name=class_name)
+        """Get fee structure by class"""
+        class_id = request.query_params.get('class_id')
+        if class_id:
+            fees = self.get_queryset().filter(class_fk=class_id)
             serializer = self.get_serializer(fees, many=True)
             return Response(serializer.data)
-        return Response({'error': 'class_name parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ------------------- FEE PAYMENT VIEWSET -------------------
@@ -839,39 +948,20 @@ class FeePaymentViewSet(viewsets.ModelViewSet):
         return Response({'error': 'student_email parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ------------------- TIMETABLE VIEWSET -------------------
-class TimetableViewSet(viewsets.ModelViewSet):
-    queryset = Timetable.objects.all()
+# ------------------- ACTIVITY VIEWSET -------------------
+class ActivityViewSet(viewsets.ModelViewSet):
+    queryset = Activity.objects.all()
+    serializer_class = ActivitySerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['class_name', 'section', 'subject', 'teacher', 'day_of_week']
-    search_fields = ['class_name', 'section', 'subject__subject_name', 'teacher__fullname']
-    ordering_fields = ['day_of_week', 'start_time']
-
+    filterset_fields = ['type', 'conducted_by', 'class_fk', 'date']
+    search_fields = ['name', 'description', 'conducted_by__email']
+    ordering_fields = ['date', 'created_at']
+    
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
-            return TimetableCreateSerializer
-        return TimetableSerializer
-
-    @action(detail=False, methods=['get'])
-    def by_class(self, request):
-        """Get timetable by class name"""
-        class_name = request.query_params.get('class_name')
-        if class_name:
-            timetable = self.get_queryset().filter(class_name=class_name)
-            serializer = self.get_serializer(timetable, many=True)
-            return Response(serializer.data)
-        return Response({'error': 'class_name parameter required'}, status=status.HTTP_400_BAD_REQUEST)
-
-    @action(detail=False, methods=['get'])
-    def by_teacher(self, request):
-        """Get timetable by teacher"""
-        teacher_email = request.query_params.get('teacher_email')
-        if teacher_email:
-            timetable = self.get_queryset().filter(teacher__email=teacher_email)  # type: ignore[union-attr]
-            serializer = self.get_serializer(timetable, many=True)
-            return Response(serializer.data)
-        return Response({'error': 'teacher_email parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+            return ActivityCreateSerializer
+        return ActivitySerializer
 
 
 # ------------------- FORMER MEMBER VIEWSET -------------------
@@ -1401,17 +1491,6 @@ class ProgramViewSet(viewsets.ModelViewSet):
     filterset_fields = ['status', 'coordinator', 'start_date', 'end_date']
     search_fields = ['name', 'description', 'coordinator__email']
     ordering_fields = ['created_at', 'start_date', 'end_date', 'status']
-
-
-# ------------------- ACTIVITY VIEWSET -------------------
-class ActivityViewSet(viewsets.ModelViewSet):
-    queryset = Activity.objects.all()
-    serializer_class = ActivitySerializer
-    permission_classes = [AllowAny]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['type', 'conducted_by', 'class_name', 'section', 'date']
-    search_fields = ['name', 'description', 'conducted_by__email', 'class_name', 'section']
-    ordering_fields = ['date', 'created_at']
 
 
 # ------------------- REPORT VIEWSET -------------------

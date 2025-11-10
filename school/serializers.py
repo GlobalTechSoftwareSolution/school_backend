@@ -507,10 +507,72 @@ class ProgramSerializer(serializers.ModelSerializer):
 # ------------------- ACTIVITY -------------------
 class ActivitySerializer(serializers.ModelSerializer):
     conducted_by_email = serializers.EmailField(source='conducted_by.email', read_only=True, allow_null=True)
+    class_fk_name = serializers.CharField(source='class_fk.class_name', read_only=True, allow_null=True)
 
     class Meta:
         model = Activity
-        fields = '__all__'
+        fields = ['id', 'name', 'description', 'type', 'date', 'conducted_by', 'conducted_by_email', 
+                  'class_fk', 'class_fk_name', 'attachment', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        # Handle the creation of Activity instances
+        return super().create(validated_data)
+        
+    def update(self, instance, validated_data):
+        # Handle the update of Activity instances
+        return super().update(instance, validated_data)
+
+class ActivityCreateSerializer(serializers.ModelSerializer):
+    conducted_by_email_input = serializers.EmailField(write_only=True, required=False, allow_null=True)
+    class_fk_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = Activity
+        fields = ['name', 'description', 'type', 'date', 'conducted_by', 'conducted_by_email_input',
+                  'class_fk', 'class_fk_id', 'attachment']
+        
+    def create(self, validated_data):
+        # Handle conducted_by from either field
+        conducted_by_email = validated_data.pop('conducted_by', None)
+        conducted_by_email_input = validated_data.pop('conducted_by_email_input', None)
+        
+        # Use conducted_by_email_input if conducted_by is not provided
+        update_email = conducted_by_email or conducted_by_email_input
+        
+        # Handle class_fk from either field
+        class_fk = validated_data.pop('class_fk', None)
+        class_fk_id = validated_data.pop('class_fk_id', None)
+        
+        # Use class_fk_id if class_fk is not provided
+        update_class_fk = class_fk or class_fk_id
+        
+        instance = super().create(validated_data)
+        
+        if update_email is not None:
+            if update_email:
+                try:
+                    conducted_by_user = User.objects.get(email=update_email)
+                    instance.conducted_by = conducted_by_user
+                    instance.save()
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({'conducted_by': f'User with email {update_email} does not exist.'})
+            else:
+                instance.conducted_by = None
+                instance.save()
+                
+        if update_class_fk is not None:
+            if update_class_fk:
+                try:
+                    class_obj = Class.objects.get(id=update_class_fk)
+                    instance.class_fk = class_obj
+                    instance.save()
+                except Class.DoesNotExist:
+                    raise serializers.ValidationError({'class_fk': f'Class with id {update_class_fk} does not exist.'})
+            else:
+                instance.class_fk = None
+                instance.save()
+        
+        return instance
 
 
 # ------------------- REPORT -------------------
