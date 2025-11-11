@@ -603,7 +603,7 @@ class ParentViewSet(viewsets.ModelViewSet):
 
 # ------------------- ATTENDANCE VIEWSET -------------------
 class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = Attendance.objects.all().select_related('student')
+    queryset = Attendance.objects.all().select_related('user')
     serializer_class = AttendanceSerializer
     permission_classes = [AllowAny]  # No authentication required
     lookup_field = 'pk'
@@ -627,26 +627,32 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     def mark(self, request):
         """
         POST /api/attendance/mark/
-        Mark attendance for a student
-        Required: student_email, class_name
+        Mark attendance for a user (except parents)
+        Required: user_email
         Optional: date, check_in, check_out, marked_by_role
         """
-        student_email = request.data.get('student_email')
-        class_name = request.data.get('class_name')
+        user_email = request.data.get('user_email')
         marked_by_role = request.data.get('marked_by_role', 'Admin')  # Default to 'Admin' if not provided
         
-        if not all([student_email, class_name]):
+        if not user_email:
             return Response(
-                {'error': 'student_email and class_name are required'},
+                {'error': 'user_email is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            student = Student.objects.get(email=student_email)
-        except Student.DoesNotExist:
+            user = User.objects.get(email=user_email)
+        except User.DoesNotExist:
             return Response(
-                {'error': 'Student not found'},
+                {'error': 'User not found'},
                 status=status.HTTP_404_NOT_FOUND
+            )
+            
+        # Check if user is a parent (parents should not have attendance)
+        if user.role == 'Parent':
+            return Response(
+                {'error': 'Parents cannot have attendance records'},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         # Get current time with seconds precision
@@ -654,29 +660,12 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         current_time = now.time()
         current_date = now.date()
         
-        # Get seconds from the current time
-        seconds = now.second
-        
-        # Get sec value from request data if provided, otherwise use current seconds
-        sec_value = request.data.get('sec', seconds)
-        
         # Get or create attendance record
-        # First, get the Class object
-        try:
-            class_obj = Class.objects.get(class_name=class_name)
-        except Class.DoesNotExist:
-            return Response(
-                {'error': f'Class {class_name} not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
         attendance, created = Attendance.objects.get_or_create(
-            student=student,
+            user=user,
             date=current_date,
             defaults={
-                'class_id': class_obj,
                 'check_in': current_time,
-                'sec': sec_value,
                 'marked_by_role': marked_by_role
             }
         )
@@ -685,9 +674,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if not created:
             if 'check_out' in request.data and not attendance.check_out:
                 attendance.check_out = request.data['check_out']
-                # Update seconds if provided
-                if 'sec' in request.data:
-                    attendance.sec = request.data['sec']
                 attendance.save()
 
         serializer = self.get_serializer(attendance)
@@ -708,97 +694,81 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
-    def get_students_for_marking(self, request):
-
-        teacher_email = request.data.get('teacher_email')
-        class_name = request.data.get('class_name')
-        section = request.data.get('section')
-
-        if not teacher_email or not class_name:
-            return Response({'error': 'teacher_email and class_name are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Verify the teacher exists
-        try:
-            teacher = Teacher.objects.get(email=teacher_email)
-        except Teacher.DoesNotExist:
-            return Response({'error': 'Teacher not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Get students in the class/section
-        try:
-            class_obj = Class.objects.get(class_name=class_name)
-            students_qs = Student.objects.filter(class_id=class_obj)
-        except Class.DoesNotExist:
-            return Response({'error': f'Class {class_name} not found'}, status=status.HTTP_404_NOT_FOUND)
-        if section:
-            students_qs = students_qs.filter(section=section)
-
+    def get_users_for_marking(self, request):
+        """
+        Get users (except parents) for marking attendance
+        """
+        # Get all non-parent users
+        users_qs = User.objects.exclude(role='Parent')
+        
         today = timezone.now().date()
-        students_data = []
+        users_data = []
 
-        # Get the Class object
-        try:
-            class_obj = Class.objects.get(class_name=class_name)
-        except Class.DoesNotExist:
-            return Response({'error': f'Class {class_name} not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        for student in students_qs:
+        for user in users_qs:
             # Get or create attendance for today
             attendance, created = Attendance.objects.get_or_create(
-                student=student,
+                user=user,
                 date=today,
                 defaults={
-                    'class_id': class_obj,
-                    'marked_by_role': 'Teacher'
+                    'marked_by_role': 'Admin'
                 }
             )
-            students_data.append({
-                'student_id': student.student_id,
-                'fullname': student.fullname,
-                'email': student.email.email,
+            
+            # Get user name based on their role
+            user_name = user.email  # Default to email
+            if hasattr(user, 'admin') and user.admin:
+                user_name = user.admin.fullname
+            elif hasattr(user, 'teacher') and user.teacher:
+                user_name = user.teacher.fullname
+            elif hasattr(user, 'principal') and user.principal:
+                user_name = user.principal.fullname
+            elif hasattr(user, 'management') and user.management:
+                user_name = user.management.fullname
+            elif hasattr(user, 'student') and user.student:
+                user_name = user.student.fullname
+            
+            users_data.append({
+                'user_id': getattr(user, 'admin', getattr(user, 'teacher', getattr(user, 'principal', getattr(user, 'management', getattr(user, 'student', None))))),
+                'fullname': user_name,
+                'email': user.email,
+                'role': user.role,
                 'status': attendance.status
             })
 
         return Response({
-            'teacher_email': teacher_email,
-            'class_name': class_name,
-            'section': section,
             'date': today,
-            'students': students_data
+            'users': users_data
         })
 
     @action(detail=False, methods=['post'])
     def bulk_update_status(self, request):
         """
         POST /api/attendance/bulk_update_status/
-        Bulk update attendance status for students.
+        Bulk update attendance status for users (except parents).
         Body: {
-            "teacher_email": "teacher@example.com",
-            "class_name": "10A",
-            "section": "A",  // optional
+            "marked_by_email": "admin@example.com",
             "date": "2023-10-01",  // optional, defaults to today
             "updates": [
-                {"student_email": "student1@example.com", "status": "Present"},
-                {"student_email": "student2@example.com", "status": "Absent"}
+                {"user_email": "teacher1@example.com", "status": "Present"},
+                {"user_email": "principal1@example.com", "status": "Absent"}
             ]
         }
         """
 
-        teacher_email = request.data.get('teacher_email')
-        class_name = request.data.get('class_name')
-        section = request.data.get('section')
+        marked_by_email = request.data.get('marked_by_email')
         date_str = request.data.get('date')
         updates = request.data.get('updates', [])
 
-        if not teacher_email or not class_name:
-            return Response({'error': 'teacher_email and class_name required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not marked_by_email:
+            return Response({'error': 'marked_by_email required'}, status=status.HTTP_400_BAD_REQUEST)
         if not updates:
             return Response({'error': 'updates list required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Verify the teacher exists
+        # Verify the marker exists
         try:
-            teacher = Teacher.objects.get(email=teacher_email)
-        except Teacher.DoesNotExist:
-            return Response({'error': 'Teacher not found'}, status=status.HTTP_404_NOT_FOUND)
+            marker = User.objects.get(email=marked_by_email)
+        except User.DoesNotExist:
+            return Response({'error': 'Marker user not found'}, status=status.HTTP_404_NOT_FOUND)
 
         # Parse date
         if date_str:
@@ -813,66 +783,37 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         errors = []
 
         for update in updates:
-            student_email = update.get('student_email')
+            user_email = update.get('user_email')
             new_status = update.get('status')
-            if not student_email or new_status not in ['Present', 'Absent']:
-                errors.append({'update': update, 'error': 'Invalid student_email or status'})
+            if not user_email or new_status not in ['Present', 'Absent']:
+                errors.append({'update': update, 'error': 'Invalid user_email or status'})
                 continue
 
             try:
-                student = Student.objects.get(email=student_email, class_name=class_name)
-                if section and student.class_id and student.class_id.sec != section:
-                    errors.append({'student_email': student_email, 'error': 'Student not in specified section'})
-                    continue
-
-                # Get the Class object
-                try:
-                    class_obj = Class.objects.get(class_name=class_name)
-                except Class.DoesNotExist:
-                    errors.append({'student_email': student_email, 'error': f'Class {class_name} not found'})
+                user = User.objects.get(email=user_email)
+                
+                # Skip parents
+                if user.role == 'Parent':
+                    errors.append({'user_email': user_email, 'error': 'Parents cannot have attendance records'})
                     continue
 
                 attendance, created = Attendance.objects.get_or_create(
-                    student=student,
+                    user=user,
                     date=target_date,
                     defaults={
-                        'class_id': class_obj,
-                        'marked_by_role': 'Teacher'
+                        'marked_by_role': marker.role
                     }
                 )
                 attendance.status = new_status
-                attendance.marked_by_role = 'Teacher'
+                attendance.marked_by_role = marker.role
                 attendance.save()
                 updated_count += 1
 
-                # Send email notification if marked as absent
-                if new_status == 'Absent':
-                    student_email = student.email.email
-                    parent_email = student.parent.email.email if student.parent else None
-
-                    # Email to student
-                    send_mail(
-                        subject='Attendance Notification: Marked Absent',
-                        message=f'Dear {student.fullname},\n\nYou have been marked as absent for {class_name} on {target_date}.\n\nRegards,\nSchool Administration',
-                        from_email=settings.DEFAULT_FROM_EMAIL,
-                        recipient_list=[student_email],
-                        fail_silently=True,
-                    )
-
-                    # Email to parent if available
-                    if parent_email:
-                        send_mail(
-                            subject='Attendance Notification: Your Child Marked Absent',
-                            message=f'Dear Parent,\n\nYour child {student.fullname} has been marked as absent for {class_name} on {target_date}.\n\nRegards,\nSchool Administration',
-                            from_email=settings.DEFAULT_FROM_EMAIL,
-                            recipient_list=[parent_email],
-                            fail_silently=True,
-                        )
-            except Student.DoesNotExist:
-                errors.append({'student_email': student_email, 'error': 'Student not found or not in class'})
+            except User.DoesNotExist:
+                errors.append({'user_email': user_email, 'error': 'User not found'})
 
         return Response({
-            'teacher_email': teacher_email,
+            'marked_by_email': marked_by_email,
             'updated_count': updated_count,
             'date': target_date,
             'errors': errors
@@ -1064,25 +1005,48 @@ def school_attendance_view(request):
                 return JsonResponse({'status': 'fail', 'message': 'No face detected'}, status=400)
             uploaded_encoding = uploaded_encodings[0]
 
-        # Determine target student
-        matched_student = None
-        from .models import Student, Attendance  # local import to avoid cycles
+        # Determine target user (excluding parents)
+        matched_user = None
+        from .models import User, Attendance  # local import to avoid cycles
         if forced_email:
             try:
-                matched_student = Student.objects.get(email=forced_email)
-            except Student.DoesNotExist:
-                return JsonResponse({'status': 'fail', 'message': f'Student not found: {forced_email}'}, status=404)
+                matched_user = User.objects.get(email=forced_email)
+                # Check if user is a parent or student (both should not have face recognition attendance)
+                if matched_user.role == 'Parent':
+                    return JsonResponse({'status': 'fail', 'message': f'Parents cannot have attendance records'}, status=400)
+                if matched_user.role == 'Student':
+                    return JsonResponse({'status': 'fail', 'message': f'Students cannot have face recognition attendance'}, status=400)
+            except User.DoesNotExist:
+                return JsonResponse({'status': 'fail', 'message': f'User not found: {forced_email}'}, status=404)
         elif uploaded_encoding is not None:
             # Auto-set check_in for face recognition flow
             check_in = timezone.localtime().time()
             
-            # Iterate over students with profile images and pick the best match by distance
-            best_student = None
+            # Iterate over users (except parents and students) with profile images and pick the best match by distance
+            best_user = None
             best_distance = None
-            candidates = Student.objects.exclude(profile_picture__isnull=True).exclude(profile_picture__exact='')
-            for student in candidates:
+            # Get all non-parent, non-student users with profile pictures
+            candidates = User.objects.exclude(role__in=['Parent', 'Student']).exclude(profile_picture__isnull=True).exclude(profile_picture__exact='')
+            for user in candidates:
                 try:
-                    resp = requests.get(student.profile_picture, timeout=10)
+                    # Get the actual user profile object to access profile_picture
+                    profile_obj = None
+                    if hasattr(user, 'admin') and user.admin and user.admin.profile_picture:
+                        profile_obj = user.admin
+                    elif hasattr(user, 'teacher') and user.teacher and user.teacher.profile_picture:
+                        profile_obj = user.teacher
+                    elif hasattr(user, 'principal') and user.principal and user.principal.profile_picture:
+                        profile_obj = user.principal
+                    elif hasattr(user, 'management') and user.management and user.management.profile_picture:
+                        profile_obj = user.management
+                    # Students are excluded from face recognition attendance
+                    elif hasattr(user, 'student') and user.student and user.student.profile_picture and user.role != 'Student':
+                        profile_obj = user.student
+                    
+                    if not profile_obj or not profile_obj.profile_picture:
+                        continue
+                        
+                    resp = requests.get(profile_obj.profile_picture, timeout=10)
                     if resp.status_code != 200:
                         continue
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as s_tmp:
@@ -1101,13 +1065,13 @@ def school_attendance_view(request):
                     # Stricter threshold to avoid random mismatches
                     if distance_val <= 0.45 and (best_distance is None or distance_val < best_distance):
                         best_distance = distance_val
-                        best_student = student
+                        best_user = user
                 except Exception:
                     continue
-            matched_student = best_student
+            matched_user = best_user
 
-        if matched_student is None:
-            return JsonResponse({'status': 'fail', 'message': 'No matching student found'}, status=404)
+        if matched_user is None:
+            return JsonResponse({'status': 'fail', 'message': 'No matching user found'}, status=404)
 
         # Verify location proximity
         is_within, distance_m = _verify_location(lat_f, lon_f)
@@ -1128,30 +1092,37 @@ def school_attendance_view(request):
         remarks_param = request.POST.get('remarks')
 
         # Create or update attendance record with auto check_in
-        # Get the Class object
-        class_obj = matched_student.class_id
         attendance_data = {
-            'class_id': class_obj,
             'check_in': check_in if 'check_in' in locals() else None,
             'status': 'Present'  # Auto-mark as present for face recognition
         }
         attendance, created = Attendance.objects.update_or_create(
-            student=matched_student,
+            user=matched_user,
             date=today,
             defaults=attendance_data
         )
         if not created:
             attendance.status = status_param or 'Present'
-            # Update class_id if already exists
-            if matched_student.class_id:
-                attendance.class_id = matched_student.class_id
             attendance.save()
 
+        # Get user name based on their role
+        user_name = matched_user.email  # Default to email
+        if hasattr(matched_user, 'admin') and matched_user.admin:
+            user_name = matched_user.admin.fullname
+        elif hasattr(matched_user, 'teacher') and matched_user.teacher:
+            user_name = matched_user.teacher.fullname
+        elif hasattr(matched_user, 'principal') and matched_user.principal:
+            user_name = matched_user.principal.fullname
+        elif hasattr(matched_user, 'management') and matched_user.management:
+            user_name = matched_user.management.fullname
+        elif hasattr(matched_user, 'student') and matched_user.student:
+            user_name = matched_user.student.fullname
+            
         return JsonResponse({
             'status': 'success',
-            'message': f'Attendance marked for {matched_student.fullname}',
-            'student': matched_student.fullname,
-            'student_id': matched_student.student_id,
+            'message': f'Attendance marked for {user_name}',
+            'user': user_name,
+            'email': matched_user.email,
             'date': str(today),
             'marked_by_role': actor_role,
         })

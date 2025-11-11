@@ -157,75 +157,74 @@ class ParentSerializer(serializers.ModelSerializer):
 
 # ------------------- ATTENDANCE SERIALIZERS -------------------
 class AttendanceSerializer(serializers.ModelSerializer):
-    student_email = serializers.EmailField(source='student.email.email', read_only=True)
-    student_name = serializers.CharField(source='student.fullname', read_only=True)
-    class_name = serializers.CharField(source='class_id.class_name', read_only=True)
-    class_sec = serializers.CharField(source='class_id.sec', read_only=True)
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
     check_in = serializers.TimeField(format='%H:%M:%S', read_only=True)
     check_out = serializers.TimeField(format='%H:%M:%S', read_only=True)
     date = serializers.DateField(format='%Y-%m-%d', read_only=True)
 
     class Meta:
         model = Attendance
-        fields = ['id', 'student_email', 'student_name', 'class_name', 'class_sec', 'date', 
-                 'check_in', 'check_out', 'sec', 'status', 'marked_by_role', 'remarks']
+        fields = ['id', 'user_email', 'user_name', 'date', 
+                 'check_in', 'check_out', 'status', 'marked_by_role', 'remarks']
         read_only_fields = ['status']
+        
+    def get_user_name(self, obj):
+        # Try to get the name from the related user profile
+        if hasattr(obj.user, 'admin') and obj.user.admin:
+            return obj.user.admin.fullname
+        elif hasattr(obj.user, 'teacher') and obj.user.teacher:
+            return obj.user.teacher.fullname
+        elif hasattr(obj.user, 'principal') and obj.user.principal:
+            return obj.user.principal.fullname
+        elif hasattr(obj.user, 'management') and obj.user.management:
+            return obj.user.management.fullname
+        elif hasattr(obj.user, 'student') and obj.user.student:
+            return obj.user.student.fullname
+        elif hasattr(obj.user, 'parent') and obj.user.parent:
+            return obj.user.parent.fullname
+        else:
+            # Fallback to email if no name found
+            return obj.user.email
 
 
 class AttendanceCreateSerializer(serializers.ModelSerializer):
-    student_email = serializers.EmailField(write_only=True)
-    class_name = serializers.CharField(write_only=True)
+    user_email = serializers.EmailField(write_only=True)
     
     class Meta:
         model = Attendance
-        fields = ['student_email', 'class_name', 'marked_by_role', 'sec', 'remarks']
+        fields = ['user_email', 'marked_by_role', 'remarks']
         extra_kwargs = {
-            'student_email': {'required': True},
-            'class_name': {'required': True},
+            'user_email': {'required': True},
             'marked_by_role': {'required': False},
-            'sec': {'required': False},
             'remarks': {'required': False}
         }
     
     def create(self, validated_data):
-        # Get the student instance from the email
-        student_email = validated_data.pop('student_email')
-        class_name = validated_data.pop('class_name')
+        # Get the user instance from the email
+        user_email = validated_data.pop('user_email')
         
         try:
-            student = Student.objects.get(email=student_email)
-        except Student.DoesNotExist:
-            raise serializers.ValidationError({'student_email': 'Student with this email does not exist.'})
+            user = User.objects.get(email=user_email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError({'user_email': 'User with this email does not exist.'})
         
-        # Get the Class object
-        try:
-            class_obj = Class.objects.get(class_name=class_name)
-        except Class.DoesNotExist:
-            raise serializers.ValidationError({'class_name': f'Class {class_name} does not exist.'})
+        # Check if user is a parent (parents should not have attendance)
+        if user.role == 'Parent':
+            raise serializers.ValidationError({'user_email': 'Parents cannot have attendance records.'})
         
-        validated_data['student'] = student
-        validated_data['class_id'] = class_obj
+        validated_data['user'] = user
         return super().create(validated_data)
 
 
 class AttendanceUpdateSerializer(serializers.ModelSerializer):
-    class_name = serializers.CharField(write_only=True, required=False)
     
     class Meta:
         model = Attendance
-        fields = ['check_out', 'class_name', 'marked_by_role', 'status', 'sec', 'remarks']
-        read_only_fields = ['student', 'date', 'check_in']
+        fields = ['check_out', 'marked_by_role', 'status', 'remarks']
+        read_only_fields = ['user', 'date', 'check_in']
     
     def update(self, instance, validated_data):
-        # Handle class_name if provided
-        class_name = validated_data.pop('class_name', None)
-        if class_name:
-            try:
-                class_obj = Class.objects.get(class_name=class_name)
-                instance.class_id = class_obj
-            except Class.DoesNotExist:
-                raise serializers.ValidationError({'class_name': f'Class {class_name} does not exist.'})
-        
         return super().update(instance, validated_data)
 
 

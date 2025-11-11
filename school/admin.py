@@ -123,9 +123,9 @@ class ParentAdmin(admin.ModelAdmin):
 # ------------------- ATTENDANCE ADMIN -------------------
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):
-    list_display = ('student', 'class_id', 'date', 'status')
-    search_fields = ('student__fullname', 'student__student_id')
-    list_filter = ('status', 'date', 'class_id')
+    list_display = ('user', 'date', 'status')
+    search_fields = ('user__email',)
+    list_filter = ('status', 'date')
     date_hierarchy = 'date'
     readonly_fields = ()
 

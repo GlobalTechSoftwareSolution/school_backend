@@ -254,17 +254,14 @@ class Parent(models.Model):
 
 # ------------------- ATTENDANCE -------------------
 class Attendance(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='attendance_records')
-    class_id = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='attendance_records', null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, to_field='email', related_name='attendance_records')
     date = models.DateField(auto_now_add=True)
     check_in = models.TimeField(auto_now_add=True)  # Includes seconds precision
     check_out = models.TimeField(null=True, blank=True)  # Includes seconds precision
-    sec = models.CharField(max_length=15, default='NA')  # Phone number field
     status = models.CharField(max_length=20, default='Absent', editable=False)
     marked_by_role = models.CharField(
         max_length=20,
         choices=[
-            ('Student', 'Student'),
             ('Teacher', 'Teacher'),
             ('Principal', 'Principal'),
             ('Management', 'Management'),
@@ -275,23 +272,32 @@ class Attendance(models.Model):
     remarks = models.TextField(null=True, blank=True)
 
     class Meta:
-        unique_together = ['student', 'date']
+        unique_together = ['user', 'date']
         ordering = ['-date', '-check_in']
 
     def __str__(self):
-        return f"{self.student.fullname} - {self.class_id.class_name} {self.class_id.sec} - {self.date} - {self.check_in}"
+        # Get user name based on their role
+        user_name = self.user.email  # Default to email
+        if hasattr(self.user, 'admin') and self.user.admin:
+            user_name = self.user.admin.fullname
+        elif hasattr(self.user, 'teacher') and self.user.teacher:
+            user_name = self.user.teacher.fullname
+        elif hasattr(self.user, 'principal') and self.user.principal:
+            user_name = self.user.principal.fullname
+        elif hasattr(self.user, 'management') and self.user.management:
+            user_name = self.user.management.fullname
+        elif hasattr(self.user, 'student') and self.user.student:
+            user_name = self.user.student.fullname
+        elif hasattr(self.user, 'parent') and self.user.parent:
+            user_name = self.user.parent.fullname
+        
+        return f"{user_name} - {self.date} - {self.check_in}"
 
     def clean(self):
         if self.check_out and self.check_out < self.check_in:
             raise ValidationError({'check_out': 'Check-out time cannot be earlier than check-in time'})
 
     def save(self, *args, **kwargs):
-        # Automatically populate sec field when class_id is set
-        if self.class_id and (not self.sec or self.sec == 'NA'):
-            self.sec = self.class_id.sec
-        elif not self.class_id:
-            # Set default when class_id is cleared
-            self.sec = 'NA'
         self.full_clean()
         super().save(*args, **kwargs)
 
@@ -432,13 +438,9 @@ class FeePayment(models.Model):
 
 # ------------------- TIMETABLE -------------------
 class Timetable(models.Model):
-
     class_id = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='timetable_entries', null=True, blank=True)
-
     subject: Subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='timetable_entries')  # type: ignore[assignment]
-
     teacher: Teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, to_field='email', related_name='timetable_entries')  # type: ignore[assignment]
-
     day_of_week = models.CharField(max_length=20, choices=[
         ('Monday', 'Monday'),
         ('Tuesday', 'Tuesday'),

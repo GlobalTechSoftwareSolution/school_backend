@@ -201,7 +201,8 @@ def _create_teacher_record(email):
             emergency_contact_relationship='',
             emergency_contact_no='',
             nationality='',
-            blood_group=None
+            blood_group=None,
+            is_classteacher=False
         )
 
 
