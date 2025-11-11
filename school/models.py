@@ -473,7 +473,8 @@ class Assignment(models.Model):
     assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='assignments_assigned')
     due_date = models.DateField(null=True, blank=True)
     attachment = models.URLField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Assigned')  # Added status field
+    student_submission = models.URLField(null=True, blank=True)  # For student file submissions
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Assigned')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -482,6 +483,24 @@ class Assignment(models.Model):
 
     def __str__(self):
         return f"{self.title} - {self.subject.subject_name}"
+
+
+# ------------------- SUBMITTED ASSIGNMENT -------------------
+class SubmittedAssignment(models.Model):
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='submissions')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='submitted_assignments')
+    submission_file = models.URLField()
+    submission_date = models.DateTimeField(auto_now_add=True)
+    grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    feedback = models.TextField(null=True, blank=True)
+    is_late = models.BooleanField(default=False)
+    
+    class Meta:
+        unique_together = ['assignment', 'student']
+        ordering = ['-submission_date']
+    
+    def __str__(self):
+        return f"{self.assignment.title} - {self.student.fullname}"
 
 
 # ------------------- FORMER MEMBER (BACKUP) -------------------

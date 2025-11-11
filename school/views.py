@@ -12,6 +12,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.core.mail import send_mail
 from django.db import models
+from decimal import Decimal
 import os, tempfile, requests, pytz
 from geopy.distance import geodesic
 from datetime import datetime, date, timedelta
@@ -23,7 +24,7 @@ except Exception:  # pragma: no cover
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
-    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award, Assignment, Leave, Task,
+    FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award, Assignment, SubmittedAssignment, Leave, Task,
     Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class,
 )
 from .serializers import (
@@ -37,7 +38,7 @@ from .serializers import (
     FeeStructureSerializer, FeePaymentSerializer, FeePaymentCreateSerializer,
     TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer,
     DocumentSerializer, NoticeSerializer, IssueSerializer, HolidaySerializer, AwardSerializer,
-    AssignmentSerializer, LeaveSerializer, TaskSerializer,
+    AssignmentSerializer, SubmittedAssignmentSerializer, SubmittedAssignmentCreateSerializer, LeaveSerializer, TaskSerializer,
     ProjectSerializer, ProgramSerializer, ActivitySerializer, ActivityCreateSerializer, ReportSerializer,
     FinanceTransactionSerializer, TransportDetailsSerializer,
 )
@@ -1361,10 +1362,53 @@ class AssignmentViewSet(viewsets.ModelViewSet):
     queryset = Assignment.objects.all()
     serializer_class = AssignmentSerializer
     permission_classes = [AllowAny]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
     filterset_fields = ['subject', 'class_id', 'assigned_by', 'due_date', 'status']
     search_fields = ['title', 'description', 'subject__subject_name', 'assigned_by__email']
     ordering_fields = ['created_at', 'due_date']
+
+    def _upload_student_submission_to_minio(self, assignment, file):
+        """Upload student submission file to MinIO and return URL."""
+        client = _minio_client_global()
+        if client is None:
+            return None
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        
+        # Create a unique identifier for the assignment submission
+        import os as _os
+        _, ext = _os.path.splitext(getattr(file, 'name', '') or '')
+        if not ext:
+            ext = '.bin'
+        
+        # Generate object name based on assignment ID and student info
+        object_name = f"assignments/{assignment.id}/submissions/{assignment.class_id.class_name}_{assignment.class_id.sec}_{assignment.title.replace(' ', '_')}_{timezone.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+        
+        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+        return f"{base}{object_name}"
+
+    def _delete_minio_object_by_url(self, url: str):
+        """Delete a MinIO object if the URL points to our BASE_BUCKET_URL."""
+        if not url:
+            return
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        if not url.startswith(base):
+            return  # Not our bucket/path
+        object_name = url[len(base):]
+        client = _minio_client_global()
+        if client is None:
+            return
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        try:
+            client.remove_object(bucket, object_name)
+        except Exception:
+            # Best effort delete; ignore errors
+            pass
 
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
@@ -1393,6 +1437,228 @@ class AssignmentViewSet(viewsets.ModelViewSet):
                     fail_silently=True,
                 )
         return response
+
+    def update(self, request, *args, **kwargs):
+        # Handle file uploads for student submissions
+        instance = self.get_object()
+        
+        # If there's a file in the request, handle it
+        if 'student_submission_file' in request.FILES:
+            file = request.FILES['student_submission_file']
+            
+            # Delete previous submission if it exists
+            if instance.student_submission:
+                self._delete_minio_object_by_url(instance.student_submission)
+            
+            # Upload new file to MinIO
+            url = self._upload_student_submission_to_minio(instance, file)
+            if url is None:
+                return Response({'error': 'Failed to upload file to storage'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Update the student_submission field
+            instance.student_submission = url
+            instance.save()
+            
+            # Also update status to 'Submitted' if it's not already
+            if instance.status != 'Submitted':
+                instance.status = 'Submitted'
+                instance.save()
+        
+        # Continue with normal update process
+        return super().update(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def submit(self, request, pk=None):
+        """Submit an assignment with a file upload."""
+        assignment = self.get_object()
+        
+        # Check if student is in the class
+        student_email = request.data.get('student_email')
+        if not student_email:
+            return Response({'error': 'student_email is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            student = Student.objects.get(email=student_email)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify student is in the correct class
+        if student.class_id != assignment.class_id:
+            return Response({'error': 'Student is not enrolled in this class'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Handle file upload
+        if 'file' not in request.FILES:
+            return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        file = request.FILES['file']
+        
+        # Delete previous submission if it exists
+        if assignment.student_submission:
+            self._delete_minio_object_by_url(assignment.student_submission)
+        
+        # Upload new file to MinIO
+        url = self._upload_student_submission_to_minio(assignment, file)
+        if url is None:
+            return Response({'error': 'Failed to upload file to storage'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Update the assignment
+        assignment.student_submission = url
+        assignment.status = 'Submitted'
+        assignment.save()
+        
+        return Response({
+            'message': 'Assignment submitted successfully',
+            'student_submission': url,
+            'status': assignment.status
+        })
+
+
+# ------------------- SUBMITTED ASSIGNMENT VIEWSET -------------------
+class SubmittedAssignmentViewSet(viewsets.ModelViewSet):
+    queryset = SubmittedAssignment.objects.all()
+    serializer_class = SubmittedAssignmentSerializer
+    permission_classes = [AllowAny]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['assignment', 'student', 'is_late']
+    search_fields = ['assignment__title', 'student__fullname', 'student__email__email']
+    ordering_fields = ['submission_date', 'assignment__due_date']
+    
+    def _upload_student_submission_to_minio(self, submitted_assignment, file, assignment=None, student=None):
+        """Upload student submission file to MinIO and return URL."""
+        client = _minio_client_global()
+        if client is None:
+            return None
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        
+        # Create a unique identifier for the assignment submission
+        import os as _os
+        _, ext = _os.path.splitext(getattr(file, 'name', '') or '')
+        if not ext:
+            ext = '.bin'
+        
+        # Get assignment and student objects
+        if submitted_assignment:
+            assignment = submitted_assignment.assignment
+            student = submitted_assignment.student
+        
+        # Generate object name based on student name only
+        if student:
+            student_name = student.fullname.replace(' ', '_')
+            object_name = f"submissions/{student_name}_{timezone.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+        else:
+            # Fallback naming if we don't have the student object
+            object_name = f"submissions/unknown_{timezone.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+        
+        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+        return f"{base}{object_name}"
+
+    def _delete_minio_object_by_url(self, url: str):
+        """Delete a MinIO object if the URL points to our BASE_BUCKET_URL."""
+        if not url:
+            return
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        if not url.startswith(base):
+            return  # Not our bucket/path
+        object_name = url[len(base):]
+        client = _minio_client_global()
+        if client is None:
+            return
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        try:
+            client.remove_object(bucket, object_name)
+        except Exception:
+            # Best effort delete; ignore errors
+            pass
+
+    def create(self, request, *args, **kwargs):
+        # Handle file uploads for student submissions
+        student_email = request.data.get('student')
+        assignment_id = request.data.get('assignment')
+        
+        # Validate student and assignment
+        if not student_email or not assignment_id:
+            return Response({'error': 'student and assignment are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            student = Student.objects.get(email=student_email)
+            assignment = Assignment.objects.get(id=assignment_id)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Assignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify student is in the correct class
+        if student.class_id != assignment.class_id:
+            return Response({'error': 'Student is not enrolled in this class'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Handle file upload
+        if 'file' not in request.FILES:
+            return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        file = request.FILES['file']
+        
+        # Upload file to MinIO
+        url = self._upload_student_submission_to_minio(None, file, assignment, student)
+        if url is None:
+            return Response({'error': 'Failed to upload file to storage'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Check if submission already exists
+        submitted_assignment, created = SubmittedAssignment.objects.get_or_create(
+            assignment=assignment,
+            student=student,
+            defaults={
+                'submission_file': url,
+                'is_late': assignment.due_date and date.today() > assignment.due_date
+            }
+        )
+        
+        if not created:
+            # Update existing submission
+            # Delete previous file
+            if submitted_assignment.submission_file:
+                self._delete_minio_object_by_url(submitted_assignment.submission_file)
+            
+            # Update with new file
+            submitted_assignment.submission_file = url
+            submitted_assignment.is_late = assignment.due_date and date.today() > assignment.due_date
+            submitted_assignment.save()
+            
+            # Update assignment status
+            assignment.status = 'Submitted'
+            assignment.save()
+        
+        serializer = self.get_serializer(submitted_assignment)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def grade(self, request, pk=None):
+        """Grade a submitted assignment."""
+        submitted_assignment = self.get_object()
+        grade = request.data.get('grade')
+        feedback = request.data.get('feedback', '')
+        
+        if grade is None:
+            return Response({'error': 'grade is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            grade_decimal = Decimal(str(grade))
+            submitted_assignment.grade = grade_decimal
+            submitted_assignment.feedback = feedback
+            submitted_assignment.save()
+            
+            return Response({
+                'message': 'Assignment graded successfully',
+                'grade': submitted_assignment.grade,
+                'feedback': submitted_assignment.feedback
+            })
+        except Exception as e:
+            return Response({'error': f'Invalid grade value: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ------------------- LEAVE VIEWSET -------------------

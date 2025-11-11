@@ -112,6 +112,7 @@ urlpatterns = [
     # Assignments
     path('assignments/', views.AssignmentViewSet.as_view({'get': 'list', 'post': 'create'}), name='assignment-list'),
     path('assignments/<int:pk>/', views.AssignmentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='assignment-detail'),
+    path('assignments/<int:pk>/submit/', views.AssignmentViewSet.as_view({'post': 'submit'}), name='assignment-submit'),
 
     # Leaves
     path('leaves/', views.LeaveViewSet.as_view({'get': 'list', 'post': 'create'}), name='leave-list'),
@@ -147,4 +148,9 @@ urlpatterns = [
     # Transport Details
     path('transport_details/', views.TransportDetailsViewSet.as_view({'get': 'list', 'post': 'create'}), name='transport-details-list'),
     path('transport_details/<int:pk>/', views.TransportDetailsViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='transport-details-detail'),
+
+    # Submitted Assignments
+    path('submitted_assignments/', views.SubmittedAssignmentViewSet.as_view({'get': 'list', 'post': 'create'}), name='submitted-assignment-list'),
+    path('submitted_assignments/<int:pk>/', views.SubmittedAssignmentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='submitted-assignment-detail'),
+    path('submitted_assignments/<int:pk>/grade/', views.SubmittedAssignmentViewSet.as_view({'post': 'grade'}), name='submitted-assignment-grade'),
 ]

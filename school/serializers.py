@@ -4,7 +4,7 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
-    Assignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class
+    Assignment, SubmittedAssignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class
 )
 
 UserModel = get_user_model()
@@ -389,13 +389,75 @@ class AwardSerializer(serializers.ModelSerializer):
 
 # ------------------- ASSIGNMENT -------------------
 class AssignmentSerializer(serializers.ModelSerializer):
-    subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
+    subject_name = serializers.CharField(source='subject.subject_name', read_only=True, allow_null=True)
+    class_name = serializers.CharField(source='class_id.class_name', read_only=True, allow_null=True)
     assigned_by_email = serializers.EmailField(source='assigned_by.email', read_only=True, allow_null=True)
+    assigned_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Assignment
         fields = '__all__'
+        
+    def get_assigned_by_name(self, obj):
+        if obj.assigned_by:
+            # Try to get the name from the related user profile
+            if hasattr(obj.assigned_by, 'admin') and obj.assigned_by.admin:
+                return obj.assigned_by.admin.fullname
+            elif hasattr(obj.assigned_by, 'teacher') and obj.assigned_by.teacher:
+                return obj.assigned_by.teacher.fullname
+            elif hasattr(obj.assigned_by, 'principal') and obj.assigned_by.principal:
+                return obj.assigned_by.principal.fullname
+            elif hasattr(obj.assigned_by, 'management') and obj.assigned_by.management:
+                return obj.assigned_by.management.fullname
+            elif hasattr(obj.assigned_by, 'student') and obj.assigned_by.student:
+                return obj.assigned_by.student.fullname
+            elif hasattr(obj.assigned_by, 'parent') and obj.assigned_by.parent:
+                return obj.assigned_by.parent.fullname
+            else:
+                # Fallback to email if no name found
+                return obj.assigned_by.email
+        return None
 
+
+class AssignmentCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Assignment
+        fields = '__all__'
+        
+    def create(self, validated_data):
+        # Handle the creation of Assignment instances
+        return super().create(validated_data)
+        
+    def update(self, instance, validated_data):
+        # Handle the update of Assignment instances
+        return super().update(instance, validated_data)
+
+# ------------------- SUBMITTED ASSIGNMENT -------------------
+class SubmittedAssignmentSerializer(serializers.ModelSerializer):
+    assignment_title = serializers.CharField(source='assignment.title', read_only=True)
+    student_name = serializers.CharField(source='student.fullname', read_only=True)
+    student_email = serializers.EmailField(source='student.email.email', read_only=True)
+    subject_name = serializers.CharField(source='assignment.subject.subject_name', read_only=True)
+    class_name = serializers.CharField(source='assignment.class_id.class_name', read_only=True)
+    section = serializers.CharField(source='assignment.class_id.sec', read_only=True)
+
+    class Meta:
+        model = SubmittedAssignment
+        fields = '__all__'
+
+
+class SubmittedAssignmentCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubmittedAssignment
+        fields = '__all__'
+        
+    def create(self, validated_data):
+        # Handle the creation of SubmittedAssignment instances
+        return super().create(validated_data)
+        
+    def update(self, instance, validated_data):
+        # Handle the update of SubmittedAssignment instances
+        return super().update(instance, validated_data)
 
 # ------------------- LEAVE -------------------
 class LeaveSerializer(serializers.ModelSerializer):
