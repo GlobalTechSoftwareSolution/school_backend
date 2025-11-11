@@ -102,6 +102,9 @@ class TeacherCreateSerializer(serializers.ModelSerializer):
         
     def create(self, validated_data):
         subjects = validated_data.pop('subjects', [])
+        # Ensure is_classteacher is initialized if not provided
+        if 'is_classteacher' not in validated_data:
+            validated_data['is_classteacher'] = False
         teacher = Teacher.objects.create(**validated_data)
         if subjects:
             teacher.subjects.set(subjects)
@@ -166,8 +169,8 @@ class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
         fields = ['id', 'user_email', 'user_name', 'date', 
-                 'check_in', 'check_out', 'status', 'marked_by_role', 'remarks']
-        read_only_fields = ['status']
+                 'check_in', 'check_out', 'status', 'role', 'remarks']
+        read_only_fields = ['status', 'role']
         
     def get_user_name(self, obj):
         # Try to get the name from the related user profile
@@ -193,10 +196,9 @@ class AttendanceCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Attendance
-        fields = ['user_email', 'marked_by_role', 'remarks']
+        fields = ['user_email', 'remarks']
         extra_kwargs = {
             'user_email': {'required': True},
-            'marked_by_role': {'required': False},
             'remarks': {'required': False}
         }
     
@@ -221,8 +223,8 @@ class AttendanceUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Attendance
-        fields = ['check_out', 'marked_by_role', 'status', 'remarks']
-        read_only_fields = ['user', 'date', 'check_in']
+        fields = ['check_out', 'status', 'remarks']
+        read_only_fields = ['user', 'date', 'check_in', 'role']
     
     def update(self, instance, validated_data):
         return super().update(instance, validated_data)

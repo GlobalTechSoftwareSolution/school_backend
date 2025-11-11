@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.core.mail import send_mail
+from django.db import models
 import os, tempfile, requests, pytz
 from geopy.distance import geodesic
 from datetime import datetime, date, timedelta
@@ -632,8 +633,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         Optional: date, check_in, check_out, marked_by_role
         """
         user_email = request.data.get('user_email')
-        marked_by_role = request.data.get('marked_by_role', 'Admin')  # Default to 'Admin' if not provided
-        
         if not user_email:
             return Response(
                 {'error': 'user_email is required'},
@@ -666,7 +665,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             date=current_date,
             defaults={
                 'check_in': current_time,
-                'marked_by_role': marked_by_role
+                'user': user
             }
         )
 
@@ -710,7 +709,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 user=user,
                 date=today,
                 defaults={
-                    'marked_by_role': 'Admin'
+                    'user': user
                 }
             )
             
@@ -801,11 +800,10 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                     user=user,
                     date=target_date,
                     defaults={
-                        'marked_by_role': marker.role
+                        'user': user
                     }
                 )
                 attendance.status = new_status
-                attendance.marked_by_role = marker.role
                 attendance.save()
                 updated_count += 1
 
@@ -1020,13 +1018,19 @@ def school_attendance_view(request):
                 return JsonResponse({'status': 'fail', 'message': f'User not found: {forced_email}'}, status=404)
         elif uploaded_encoding is not None:
             # Auto-set check_in for face recognition flow
-            check_in = timezone.localtime().time()
+            check_in = timezone.now().time()
             
             # Iterate over users (except parents and students) with profile images and pick the best match by distance
             best_user = None
             best_distance = None
             # Get all non-parent, non-student users with profile pictures
-            candidates = User.objects.exclude(role__in=['Parent', 'Student']).exclude(profile_picture__isnull=True).exclude(profile_picture__exact='')
+            # We need to check profile pictures in related models since User doesn't have this field directly
+            candidates = User.objects.exclude(role__in=['Parent', 'Student']).filter(
+                models.Q(teacher__profile_picture__isnull=False) & ~models.Q(teacher__profile_picture='') |
+                models.Q(admin__profile_picture__isnull=False) & ~models.Q(admin__profile_picture='') |
+                models.Q(principal__profile_picture__isnull=False) & ~models.Q(principal__profile_picture='') |
+                models.Q(management__profile_picture__isnull=False) & ~models.Q(management__profile_picture='')
+            ).distinct()
             for user in candidates:
                 try:
                     # Get the actual user profile object to access profile_picture
@@ -1083,8 +1087,6 @@ def school_attendance_view(request):
 
         # Mark attendance for today (works regardless of USE_TZ setting)
         today = timezone.now().date()
-        # Determine actor role (who is marking)
-        actor_role = getattr(getattr(request, 'user', None), 'role', None) or 'Admin'
         # Allow overriding status and remarks
         status_param = request.POST.get('status')
         if status_param not in (None, 'Present', 'Absent'):
@@ -1094,7 +1096,8 @@ def school_attendance_view(request):
         # Create or update attendance record with auto check_in
         attendance_data = {
             'check_in': check_in if 'check_in' in locals() else None,
-            'status': 'Present'  # Auto-mark as present for face recognition
+            'status': 'Present',  # Auto-mark as present for face recognition
+            'user': matched_user
         }
         attendance, created = Attendance.objects.update_or_create(
             user=matched_user,
@@ -1124,7 +1127,7 @@ def school_attendance_view(request):
             'user': user_name,
             'email': matched_user.email,
             'date': str(today),
-            'marked_by_role': actor_role,
+            'role': matched_user.role,
         })
     finally:
         try:

@@ -259,16 +259,7 @@ class Attendance(models.Model):
     check_in = models.TimeField(auto_now_add=True)  # Includes seconds precision
     check_out = models.TimeField(null=True, blank=True)  # Includes seconds precision
     status = models.CharField(max_length=20, default='Absent', editable=False)
-    marked_by_role = models.CharField(
-        max_length=20,
-        choices=[
-            ('Teacher', 'Teacher'),
-            ('Principal', 'Principal'),
-            ('Management', 'Management'),
-            ('Admin', 'Admin')
-        ],
-        default='Admin'
-    )
+    role = models.CharField(max_length=20, editable=False)
     remarks = models.TextField(null=True, blank=True)
 
     class Meta:
@@ -291,13 +282,16 @@ class Attendance(models.Model):
         elif hasattr(self.user, 'parent') and self.user.parent:
             user_name = self.user.parent.fullname
         
-        return f"{user_name} - {self.date} - {self.check_in}"
+        return f"{user_name} - {self.date} - {self.check_in} ({self.role})"
 
     def clean(self):
         if self.check_out and self.check_out < self.check_in:
             raise ValidationError({'check_out': 'Check-out time cannot be earlier than check-in time'})
 
     def save(self, *args, **kwargs):
+        # Set the role dynamically based on the user's actual role
+        if not self.role:
+            self.role = self.user.role
         self.full_clean()
         super().save(*args, **kwargs)
 

@@ -61,6 +61,7 @@ urlpatterns = [
     path('attendance/mark/', views.AttendanceViewSet.as_view({'post': 'mark'}), name='attendance-mark'),
     path('attendance/get_users_for_marking/', views.AttendanceViewSet.as_view({'post': 'get_users_for_marking'}), name='attendance-get-users'),
     path('mark_students_attendance/', views.AttendanceViewSet.as_view({'post': 'bulk_update_status'}), name='attendance-bulk-update'),
+    path('school_attendance/', views.school_attendance_view, name='school-attendance-view'),
     
     # Grades
     path('grades/', views.GradeViewSet.as_view({'get': 'list', 'post': 'create'}), name='grade-list'),
