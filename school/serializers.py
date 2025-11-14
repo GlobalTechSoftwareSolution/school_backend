@@ -4,7 +4,7 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
-    Assignment, SubmittedAssignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class
+    Assignment, SubmittedAssignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class, IDCard
 )
 
 UserModel = get_user_model()
@@ -683,3 +683,31 @@ class TransportDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = TransportDetails
         fields = '__all__'
+
+
+# ------------------- ID CARD -------------------
+class IDCardSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = IDCard
+        fields = '__all__'
+        
+    def get_user_name(self, obj):
+        # Try to get the name from the related user profile
+        if hasattr(obj.user, 'admin') and obj.user.admin:
+            return obj.user.admin.fullname
+        elif hasattr(obj.user, 'teacher') and obj.user.teacher:
+            return obj.user.teacher.fullname
+        elif hasattr(obj.user, 'principal') and obj.user.principal:
+            return obj.user.principal.fullname
+        elif hasattr(obj.user, 'management') and obj.user.management:
+            return obj.user.management.fullname
+        elif hasattr(obj.user, 'student') and obj.user.student:
+            return obj.user.student.fullname
+        elif hasattr(obj.user, 'parent') and obj.user.parent:
+            return obj.user.parent.fullname
+        else:
+            # Fallback to email if no name found
+            return obj.user.email

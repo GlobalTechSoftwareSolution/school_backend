@@ -11,6 +11,10 @@ urlpatterns = [
     path('check_token/', views.current_user, name='current-user'),
     path('login/', views.login_with_credentials, name='login'),
     
+    # ID Card
+    path('', views.id_card_view, name='id-card'),
+    path('test-id-card/', views.test_id_card_view, name='test-id-card'),
+    
     # User Management
     path('users/', views.UserViewSet.as_view({'get': 'list', 'post': 'create'}), name='user-list'),
     path('users/<str:pk>/', views.UserViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='user-detail'),
@@ -153,4 +157,10 @@ urlpatterns = [
     path('submitted_assignments/', views.SubmittedAssignmentViewSet.as_view({'get': 'list', 'post': 'create'}), name='submitted-assignment-list'),
     path('submitted_assignments/<int:pk>/', views.SubmittedAssignmentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='submitted-assignment-detail'),
     path('submitted_assignments/<int:pk>/grade/', views.SubmittedAssignmentViewSet.as_view({'post': 'grade'}), name='submitted-assignment-grade'),
+    
+    # ID Cards
+    path('id_cards/', views.IDCardViewSet.as_view({'get': 'list', 'post': 'create'}), name='id-card-list'),
+    path('id_cards/<int:pk>/', views.IDCardViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='id-card-detail'),
+    path('id_cards/check_by_email/', views.IDCardViewSet.as_view({'get': 'check_by_email'}), name='id-card-check-by-email'),
+    path('id_cards/generate/', views.IDCardViewSet.as_view({'post': 'generate_id_card'}), name='id-card-generate'),
 ]

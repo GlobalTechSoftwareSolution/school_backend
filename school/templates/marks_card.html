@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>School Marks Card</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Poppins',sans-serif;}
+  body{
+    background:#f3f5f9;
+    display:flex;justify-content:center;align-items:center;
+    padding:40px;
+  }
+  .marks-card{
+    width:800px;
+    background:#fff;
+    border:2px solid #1e3c72;
+    border-radius:10px;
+    box-shadow:0 8px 25px rgba(0,0,0,0.1);
+    padding:30px 50px;
+  }
+
+  /* Header */
+  .header{
+    text-align:center;
+    border-bottom:3px solid #1e3c72;
+    padding-bottom:10px;
+    margin-bottom:20px;
+  }
+  .header img{
+    width:80px;
+    height:80px;
+    object-fit:contain;
+    float:left;
+  }
+  .school-name{
+    font-size:1.8rem;
+    font-weight:700;
+    color:#1e3c72;
+  }
+  .school-address{
+    font-size:0.95rem;
+    color:#444;
+  }
+
+  /* Student info */
+  .student-info{
+    margin:25px 0;
+    border:1px solid #ccc;
+    padding:15px 20px;
+    border-radius:6px;
+  }
+  .student-info table{
+    width:100%;
+    border-collapse:collapse;
+  }
+  .student-info td{
+    padding:8px 5px;
+    font-size:0.95rem;
+  }
+  .student-info td:first-child{
+    font-weight:600;
+    width:180px;
+  }
+
+  /* Marks Table */
+  .marks-table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:15px;
+  }
+  .marks-table th, .marks-table td{
+    border:1px solid #aaa;
+    padding:10px;
+    text-align:center;
+    font-size:0.95rem;
+  }
+  .marks-table th{
+    background:#1e3c72;
+    color:#fff;
+    font-weight:600;
+  }
+  .marks-table tr:nth-child(even){
+    background:#f9f9f9;
+  }
+
+  /* Footer */
+  .footer{
+    margin-top:40px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .sign-box{
+    text-align:center;
+    width:30%;
+  }
+  .sign-box p{
+    border-top:1px solid #333;
+    padding-top:5px;
+    margin-top:60px;
+    font-size:0.9rem;
+    font-weight:600;
+  }
+  .result-box{
+    text-align:center;
+    font-size:1rem;
+    font-weight:600;
+    color:#1e3c72;
+  }
+
+  /* Print optimization */
+  @media print {
+    body{background:#fff;}
+    .marks-card{box-shadow:none;border:1px solid #000;}
+  }
+</style>
+</head>
+<body>
+
+<div class="marks-card">
+
+  <div class="header">
+    <img src="school-logo.png" alt="School Logo">
+    <div>
+      <div class="school-name">GREENWOOD PUBLIC SCHOOL</div>
+      <div class="school-address">123, MG Road, Bengaluru - 560001 | Ph: (080) 2345 6789</div>
+      <h3 style="margin-top:10px;color:#1e3c72;">ANNUAL EXAMINATION MARKS CARD</h3>
+    </div>
+  </div>
+
+  <div class="student-info">
+    <table>
+      <tr><td>Student Name:</td><td>Abhishek M</td><td>Roll No:</td><td>24</td></tr>
+      <tr><td>Class & Section:</td><td>10th A</td><td>Academic Year:</td><td>2024-25</td></tr>
+      <tr><td>Date of Birth:</td><td>15/08/2009</td><td>Admission No:</td><td>10234</td></tr>
+    </table>
+  </div>
+
+  <table class="marks-table">
+    <tr>
+      <th>Subject</th>
+      <th>Max Marks</th>
+      <th>Marks Obtained</th>
+      <th>Grade</th>
+      <th>Result</th>
+    </tr>
+    <tr><td>English</td><td>100</td><td>88</td><td>A</td><td>Pass</td></tr>
+    <tr><td>Mathematics</td><td>100</td><td>92</td><td>A+</td><td>Pass</td></tr>
+    <tr><td>Science</td><td>100</td><td>85</td><td>A</td><td>Pass</td></tr>
+    <tr><td>Social Studies</td><td>100</td><td>90</td><td>A+</td><td>Pass</td></tr>
+    <tr><td>Second Language (Hindi)</td><td>100</td><td>80</td><td>B+</td><td>Pass</td></tr>
+    <tr>
+      <th>Total</th><th>500</th><th>435</th><th>-</th><th>Pass</th>
+    </tr>
+  </table>
+
+  <div class="footer">
+    <div class="sign-box">
+      <p>Class Teacher</p>
+    </div>
+    <div class="result-box">
+      Overall Result: <span style="color:green;">PASS</span>
+    </div>
+    <div class="sign-box">
+      <p>Principal</p>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

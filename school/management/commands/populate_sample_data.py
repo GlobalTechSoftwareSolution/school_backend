@@ -4,12 +4,16 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import datetime, timedelta
 from decimal import Decimal
+import pytz
 from school.models import (
     Department, Class, Subject, Student, Teacher, Principal, Management, Admin, Parent,
     Attendance, Grade, FeeStructure, FeePayment, Timetable, Assignment, FormerMember,
     Document, Award, Notice, Issue, Holiday, Leave, Task, Project, Program, Activity,
     Report, FinanceTransaction, TransportDetails
 )
+
+# Define IST timezone for Indian Standard Time
+IST = pytz.timezone("Asia/Kolkata")
 
 User = get_user_model()
 
@@ -42,7 +46,7 @@ class Command(BaseCommand):
             cls, created = Class.objects.get_or_create(
                 class_name=class_name,
                 sec=sec,
-                defaults={'created_at': timezone.now(), 'updated_at': timezone.now()}
+                defaults={'created_at': timezone.now().astimezone(IST), 'updated_at': timezone.now().astimezone(IST)}
             )
             classes.append(cls)
         
@@ -108,9 +112,9 @@ class Command(BaseCommand):
                         'fullname': name,
                         'student_id': f'STD{i+1:03d}',
                         'phone': f'+123456789{i:02d}',
-                        'date_of_birth': timezone.now().date() - timedelta(days=365*15),
+                        'date_of_birth': timezone.now().astimezone(IST).date() - timedelta(days=365*15),
                         'gender': random.choice(['Male', 'Female']),
-                        'admission_date': timezone.now().date() - timedelta(days=30),
+                        'admission_date': timezone.now().astimezone(IST).date() - timedelta(days=30),
                         'class_id': random.choice(classes) if classes else None,
                         'profile_picture': 'https://example.com/profile.jpg',
                         'residential_address': f'{i+1} Main Street, City',
@@ -174,9 +178,9 @@ class Command(BaseCommand):
                         'fullname': name,
                         'teacher_id': f'TCHR{i+1:03d}',
                         'phone': f'+123456789{i:02d}',
-                        'date_of_birth': timezone.now().date() - timedelta(days=365*30),
+                        'date_of_birth': timezone.now().astimezone(IST).date() - timedelta(days=365*30),
                         'gender': random.choice(['Male', 'Female']),
-                        'date_joined': timezone.now().date() - timedelta(days=365),
+                        'date_joined': timezone.now().astimezone(IST).date() - timedelta(days=365),
                         'department': random.choice(departments) if departments else None,
                         'qualification': random.choice(['B.Ed', 'M.Ed', 'PhD']),
                         'experience_years': Decimal(random.randint(2, 15)),
@@ -217,8 +221,8 @@ class Command(BaseCommand):
                     defaults={
                         'fullname': 'Dr. Principal Name',
                         'phone': '+1234567890',
-                        'date_of_birth': timezone.now().date() - timedelta(days=365*45),
-                        'date_joined': timezone.now().date() - timedelta(days=365*5),
+                        'date_of_birth': timezone.now().astimezone(IST).date() - timedelta(days=365*45),
+                        'date_joined': timezone.now().astimezone(IST).date() - timedelta(days=365*5),
                         'qualification': 'PhD in Education',
                         'total_experience': Decimal('20.0'),
                         'bio': 'Experienced educational leader',
@@ -239,8 +243,8 @@ class Command(BaseCommand):
                         'fullname': 'Management Staff',
                         'phone': '+1234567891',
                         'designation': 'Manager',
-                        'date_of_birth': timezone.now().date() - timedelta(days=365*35),
-                        'date_joined': timezone.now().date() - timedelta(days=365*3),
+                        'date_of_birth': timezone.now().astimezone(IST).date() - timedelta(days=365*35),
+                        'date_joined': timezone.now().astimezone(IST).date() - timedelta(days=365*3),
                         'department': random.choice(departments) if departments else None,
                         'profile_picture': 'https://example.com/profile.jpg',
                         'office_address': 'Management Office, School Building',
@@ -265,29 +269,93 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(f'Error creating admin: {e}')
         
-        # Create attendance records
+        # Create attendance records for students
         for student in students:
             try:
                 attendance, created = Attendance.objects.get_or_create(
-                    student=student,
-                    date=timezone.now().date(),
+                    user=student.email,  # Use the user field instead of student
+                    date=timezone.now().astimezone(IST).date(),
                     defaults={
-                        'class_id': student.class_id,
-                        'check_in': timezone.now().time(),
+                        'check_in': timezone.now().astimezone(IST).time(),
                         'status': 'Present',
-                        'marked_by_role': 'Teacher',
+                        'role': 'Student',  # Set the role explicitly
                         'remarks': 'Regular attendance',
                     }
                 )
-                # Set sec field based on class
-                if attendance.class_id:
-                    attendance.sec = attendance.class_id.sec
-                else:
-                    attendance.sec = 'A'  # Default section
-                attendance.save()
             except Exception as e:
                 self.stdout.write(f'Error creating attendance for {student.fullname}: {e}')
                 continue
+                
+        # Create attendance records for teachers
+        for teacher in teachers:
+            try:
+                attendance, created = Attendance.objects.get_or_create(
+                    user=teacher.email,  # Use the user field instead of student
+                    date=timezone.now().astimezone(IST).date(),
+                    defaults={
+                        'check_in': timezone.now().astimezone(IST).time(),
+                        'status': 'Present',
+                        'role': 'Teacher',  # Set the role explicitly
+                        'remarks': 'Regular attendance',
+                    }
+                )
+            except Exception as e:
+                self.stdout.write(f'Error creating attendance for teacher {teacher.fullname}: {e}')
+                continue
+                
+        # Create attendance records for principal
+        principal_user = next((u for u in users if u.role == 'Principal'), None)
+        if principal_user:
+            try:
+                principal = Principal.objects.get(email=principal_user)
+                attendance, created = Attendance.objects.get_or_create(
+                    user=principal_user,
+                    date=timezone.now().astimezone(IST).date(),
+                    defaults={
+                        'check_in': timezone.now().astimezone(IST).time(),
+                        'status': 'Present',
+                        'role': 'Principal',
+                        'remarks': 'Regular attendance',
+                    }
+                )
+            except Exception as e:
+                self.stdout.write(f'Error creating attendance for principal: {e}')
+                
+        # Create attendance records for management
+        management_user = next((u for u in users if u.role == 'Management'), None)
+        if management_user:
+            try:
+                management = Management.objects.get(email=management_user)
+                attendance, created = Attendance.objects.get_or_create(
+                    user=management_user,
+                    date=timezone.now().astimezone(IST).date(),
+                    defaults={
+                        'check_in': timezone.now().astimezone(IST).time(),
+                        'status': 'Present',
+                        'role': 'Management',
+                        'remarks': 'Regular attendance',
+                    }
+                )
+            except Exception as e:
+                self.stdout.write(f'Error creating attendance for management: {e}')
+                
+        # Create attendance records for admin
+        admin_user = next((u for u in users if u.role == 'Admin'), None)
+        if admin_user:
+            try:
+                admin = Admin.objects.get(email=admin_user)
+                attendance, created = Attendance.objects.get_or_create(
+                    user=admin_user,
+                    date=timezone.now().astimezone(IST).date(),
+                    defaults={
+                        'check_in': timezone.now().astimezone(IST).time(),
+                        'status': 'Present',
+                        'role': 'Admin',
+                        'remarks': 'Regular attendance',
+                    }
+                )
+            except Exception as e:
+                self.stdout.write(f'Error creating attendance for admin: {e}')
         
         # Create grades
         for student in students:
@@ -300,7 +368,7 @@ class Command(BaseCommand):
                         defaults={
                             'marks_obtained': Decimal(random.randint(60, 95)),
                             'total_marks': Decimal(100),
-                            'exam_date': timezone.now().date() - timedelta(days=10),
+                            'exam_date': timezone.now().astimezone(IST).date() - timedelta(days=10),
                             'remarks': 'Good performance',
                         }
                     )
@@ -334,7 +402,7 @@ class Command(BaseCommand):
                         'description': f'Assignment description for {subject.subject_name}',
                         'class_id': random.choice(classes) if classes else None,
                         'assigned_by': random.choice(users) if users else None,
-                        'due_date': timezone.now().date() + timedelta(days=7),
+                        'due_date': timezone.now().astimezone(IST).date() + timedelta(days=7),
                         'attachment': 'https://example.com/assignment.pdf',
                         'status': 'Assigned',
                     }
@@ -353,8 +421,8 @@ class Command(BaseCommand):
                         day_of_week=random.choice(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']),
                         defaults={
                             'teacher': random.choice(teachers) if teachers else None,
-                            'start_time': timezone.now().time().replace(hour=9, minute=0),
-                            'end_time': timezone.now().time().replace(hour=10, minute=0),
+                            'start_time': timezone.now().astimezone(IST).time().replace(hour=9, minute=0),
+                            'end_time': timezone.now().astimezone(IST).time().replace(hour=10, minute=0),
                             'room_number': f'Room {random.randint(101, 110)}',
                         }
                     )
@@ -369,8 +437,8 @@ class Command(BaseCommand):
                 defaults={
                     'message': 'This is to inform all students and parents that the school will remain closed on account of the upcoming holiday.',
                     'email': random.choice(users) if users else None,
-                    'posted_date': timezone.now(),
-                    'valid_until': timezone.now() + timedelta(days=30),
+                    'posted_date': timezone.now().astimezone(IST),
+                    'valid_until': timezone.now().astimezone(IST) + timedelta(days=30),
                     'important': True,
                     'attachment': 'https://example.com/notice.pdf',
                     'notice_by': random.choice(users) if users else None,

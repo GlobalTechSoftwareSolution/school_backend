@@ -9,7 +9,9 @@ from django.conf import settings
 from minio import Minio
 from django.utils import timezone
 from django.http import JsonResponse
+from django.shortcuts import render
 from django.shortcuts import get_object_or_404
+
 from django.core.mail import send_mail
 from django.db import models
 from decimal import Decimal
@@ -21,11 +23,14 @@ try:
 except Exception:  # pragma: no cover
     face_recognition = None
 
+# Define IST timezone for Indian Standard Time
+IST = pytz.timezone("Asia/Kolkata")
+
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award, Assignment, SubmittedAssignment, Leave, Task,
-    Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class,
+    Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class, IDCard,
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer,
@@ -40,7 +45,7 @@ from .serializers import (
     DocumentSerializer, NoticeSerializer, IssueSerializer, HolidaySerializer, AwardSerializer,
     AssignmentSerializer, SubmittedAssignmentSerializer, SubmittedAssignmentCreateSerializer, LeaveSerializer, TaskSerializer,
     ProjectSerializer, ProgramSerializer, ActivitySerializer, ActivityCreateSerializer, ReportSerializer,
-    FinanceTransactionSerializer, TransportDetailsSerializer,
+    FinanceTransactionSerializer, TransportDetailsSerializer, IDCardSerializer,
 )
 
 
@@ -196,6 +201,118 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response({'message': 'User deactivated successfully'})
 
 
+# ------------------- ID CARD VIEW -------------------
+def id_card_view(request):
+    """
+    Serve the ID card template with user data
+    """
+    # Get the current authenticated user
+    user = request.user
+    
+    # Initialize context with default values
+    context = {
+        'name': 'NAME SURNAME',
+        'position': 'Your Position Here',
+        'dob': 'MM/DD/YEAR',
+        'email': 'email@example.com',
+        'phone': '+91 9876543210',
+        'id_no': 'RST-0012',
+        'profile_picture': 'profile.jpg',
+        'barcode': 'barcode.png',
+        'company_name': 'SCHOOL NAME',
+    }
+    
+    # If user is authenticated, populate with actual data
+    if user.is_authenticated:
+        context['email'] = user.email
+        context['position'] = user.role
+        
+        # Try to get role-specific data
+        if hasattr(user, 'student') and user.student:
+            student = user.student
+            context['name'] = student.fullname
+            context['dob'] = student.date_of_birth.strftime('%m/%d/%Y') if student.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = student.phone or '+91 9876543210'
+            context['id_no'] = student.student_id or 'RST-0012'
+            context['profile_picture'] = student.profile_picture or 'profile.jpg'
+            
+            # Add class information if available
+            if student.class_id:
+                context['position'] = f"Student - {student.class_id.class_name} {student.class_id.sec}"
+                
+        elif hasattr(user, 'teacher') and user.teacher:
+            teacher = user.teacher
+            context['name'] = teacher.fullname
+            context['dob'] = teacher.date_of_birth.strftime('%m/%d/%Y') if teacher.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = teacher.phone or '+91 9876543210'
+            context['id_no'] = teacher.teacher_id or 'RST-0012'
+            context['profile_picture'] = teacher.profile_picture or 'profile.jpg'
+            
+            # Add department information if available
+            if teacher.department:
+                context['position'] = f"Teacher - {teacher.department.department_name}"
+                
+        elif hasattr(user, 'principal') and user.principal:
+            principal = user.principal
+            context['name'] = principal.fullname
+            context['dob'] = principal.date_of_birth.strftime('%m/%d/%Y') if principal.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = principal.phone or '+91 9876543210'
+            context['id_no'] = 'PRN-001'
+            context['profile_picture'] = principal.profile_picture or 'profile.jpg'
+            context['position'] = 'Principal'
+            
+        elif hasattr(user, 'management') and user.management:
+            management = user.management
+            context['name'] = management.fullname
+            context['dob'] = management.date_of_birth.strftime('%m/%d/%Y') if management.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = management.phone or '+91 9876543210'
+            context['id_no'] = 'MGT-001'
+            context['profile_picture'] = management.profile_picture or 'profile.jpg'
+            
+            # Add designation if available
+            if management.designation:
+                context['position'] = f"Management - {management.designation}"
+                
+        elif hasattr(user, 'admin') and user.admin:
+            admin = user.admin
+            context['name'] = admin.fullname
+            context['phone'] = admin.phone or '+91 9876543210'
+            context['id_no'] = 'ADM-001'
+            context['profile_picture'] = admin.profile_picture or 'profile.jpg'
+            context['position'] = 'Admin'
+            
+        elif hasattr(user, 'parent') and user.parent:
+            parent = user.parent
+            context['name'] = parent.fullname
+            context['dob'] = parent.date_of_birth.strftime('%m/%d/%Y') if parent.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = parent.phone or '+91 9876543210'
+            context['id_no'] = 'PRT-001'
+            context['profile_picture'] = parent.profile_picture or 'profile.jpg'
+            context['position'] = 'Parent'
+
+    return render(request, 'index.html', context)
+
+
+# ------------------- TEST ID CARD VIEW -------------------
+def test_id_card_view(request):
+    """
+    Test view for the ID card template with sample data
+    """
+    context = {
+        'name': 'John Doe',
+        'position': 'Student - Grade 10A',
+        'dob': '01/15/2008',
+        'email': 'john.doe@school.edu',
+        'phone': '+91 98765 43210',
+        'id_no': 'STU-2023-001',
+        'profile_picture': 'https://randomuser.me/api/portraits/men/41.jpg',
+        'barcode': 'barcode.png',
+        'company_name': 'Global School',
+    }
+    
+    return render(request, 'index.html', context)
+
+
 # ------------------- DEPARTMENT VIEWSET -------------------
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
@@ -284,20 +401,253 @@ class StudentViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({'error': 'class_name parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+
+# ------------------- AWARD VIEWSET -------------------
+class AwardViewSet(viewsets.ModelViewSet):
+    queryset = Award.objects.all()
+    serializer_class = AwardSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['email']
+    search_fields = ['title', 'description', 'email__email']
+    ordering_fields = ['created_at', 'title']
+
+    @action(detail=False, methods=['post'])
+    def bulk_upsert(self, request):
+        """Upsert awards by (email, title). Expects JSON array."""
+        if not isinstance(request.data, list):
+            return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
+        created = 0
+        updated = 0
+        errors: list[dict] = []
+        for idx, item in enumerate(request.data):
+            try:
+                email = item.get('email')
+                title = item.get('title')
+                if not email or not title:
+                    raise ValueError('email and title are required')
+                try:
+                    user = User.objects.get(email=email)
+                except User.DoesNotExist:
+                    raise ValueError(f"User not found: {email}")
+                defaults = {k: v for k, v in item.items() if k not in ('email', 'title')}
+                obj, was_created = Award.objects.update_or_create(
+                    email=user,
+                    title=title,
+                    defaults=defaults
+                )
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+            except Exception as e:
+                errors.append({'index': idx, 'error': str(e), 'item': item})
+        return Response({'created': created, 'updated': updated, 'errors': errors})
+
+
+# ------------------- ID CARD VIEWSET -------------------
+class IDCardViewSet(viewsets.ModelViewSet):
+    queryset = IDCard.objects.all()
+    serializer_class = IDCardSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['user']
+    search_fields = ['user__email']
+    ordering_fields = ['created_at', 'updated_at']
+
+    def _minio_client(self):
+        if Minio is None:
+            return None
+        cfg = settings.MINIO_STORAGE
+        return Minio(
+            cfg['ENDPOINT'],
+            access_key=cfg['ACCESS_KEY'],
+            secret_key=cfg['SECRET_KEY'],
+            secure=cfg.get('USE_SSL', True),
+        )
+
+    def _object_name_for_idcard(self, idcard, fallback_email: str | None = None) -> str:
+        identifier = None
+        if hasattr(idcard, 'user') and idcard.user:
+            user = idcard.user
+            if hasattr(user, 'email'):
+                identifier = user.email.split('@')[0]
+        if not identifier and fallback_email:
+            identifier = fallback_email.split('@')[0]
+        if not identifier:
+            identifier = 'unknown'
+        return f"id_cards/{identifier}.html"
+
+    def _upload_file_to_minio(self, idcard, file, fallback_email: str | None = None):
+        client = self._minio_client()
+        if client is None:
+            return None
+        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+        object_name = self._object_name_for_idcard(idcard, fallback_email)
+        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        return f"{base}{object_name}"
+
+    @action(detail=False, methods=['get'])
+    def check_by_email(self, request):
+        """Check if an ID card exists for a user by email"""
+        email = request.query_params.get('email')
+        if not email:
+            return Response({'error': 'Email parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = User.objects.get(email=email)
+            id_card, created = IDCard.objects.get_or_create(user=user)
+            
+            if id_card.id_card_url:
+                # ID card exists
+                serializer = self.get_serializer(id_card)
+                return Response({
+                    'exists': True,
+                    'id_card': serializer.data
+                })
+            else:
+                # ID card doesn't exist
+                return Response({
+                    'exists': False,
+                    'message': 'ID card not found for this user'
+                })
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['post'])
+    def generate_id_card(self, request):
+        """Generate ID card for a user and store in MinIO"""
+        email = request.data.get('email')
+        if not email:
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get or create IDCard record
+        id_card, created = IDCard.objects.get_or_create(user=user)
+        
+        # Generate ID card HTML
+        context = {
+            'name': 'NAME SURNAME',
+            'position': 'Your Position Here',
+            'dob': 'MM/DD/YEAR',
+            'email': user.email,
+            'phone': '+91 9876543210',
+            'id_no': 'RST-0012',
+            'profile_picture': 'profile.jpg',
+            'barcode': 'barcode.png',
+            'company_name': 'SCHOOL NAME',
+        }
+        
+        # Populate context with actual user data
+        if hasattr(user, 'student') and user.student:
+            student = user.student
+            context['name'] = student.fullname
+            context['dob'] = student.date_of_birth.strftime('%m/%d/%Y') if student.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = student.phone or '+91 9876543210'
+            context['id_no'] = student.student_id or 'RST-0012'
+            context['profile_picture'] = student.profile_picture or 'profile.jpg'
+            
+            # Add class information if available
+            if student.class_id:
+                context['position'] = f"Student - {student.class_id.class_name} {student.class_id.sec}"
+                
+        elif hasattr(user, 'teacher') and user.teacher:
+            teacher = user.teacher
+            context['name'] = teacher.fullname
+            context['dob'] = teacher.date_of_birth.strftime('%m/%d/%Y') if teacher.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = teacher.phone or '+91 9876543210'
+            context['id_no'] = teacher.teacher_id or 'RST-0012'
+            context['profile_picture'] = teacher.profile_picture or 'profile.jpg'
+            
+            # Add department information if available
+            if teacher.department:
+                context['position'] = f"Teacher - {teacher.department.department_name}"
+                
+        elif hasattr(user, 'principal') and user.principal:
+            principal = user.principal
+            context['name'] = principal.fullname
+            context['dob'] = principal.date_of_birth.strftime('%m/%d/%Y') if principal.date_of_birth else 'MM/DD/YYEAR'
+            context['phone'] = principal.phone or '+91 9876543210'
+            context['id_no'] = 'PRN-001'
+            context['profile_picture'] = principal.profile_picture or 'profile.jpg'
+            context['position'] = 'Principal'
+            
+        elif hasattr(user, 'management') and user.management:
+            management = user.management
+            context['name'] = management.fullname
+            context['dob'] = management.date_of_birth.strftime('%m/%d/%Y') if management.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = management.phone or '+91 9876543210'
+            context['id_no'] = 'MGT-001'
+            context['profile_picture'] = management.profile_picture or 'profile.jpg'
+            
+            # Add designation if available
+            if management.designation:
+                context['position'] = f"Management - {management.designation}"
+                
+        elif hasattr(user, 'admin') and user.admin:
+            admin = user.admin
+            context['name'] = admin.fullname
+            context['phone'] = admin.phone or '+91 9876543210'
+            context['id_no'] = 'ADM-001'
+            context['profile_picture'] = admin.profile_picture or 'profile.jpg'
+            context['position'] = 'Admin'
+            
+        elif hasattr(user, 'parent') and user.parent:
+            parent = user.parent
+            context['name'] = parent.fullname
+            context['dob'] = parent.date_of_birth.strftime('%m/%d/%Y') if parent.date_of_birth else 'MM/DD/YEAR'
+            context['phone'] = parent.phone or '+91 9876543210'
+            context['id_no'] = 'PRT-001'
+            context['profile_picture'] = parent.profile_picture or 'profile.jpg'
+            context['position'] = 'Parent'
+        
+        # Render the ID card template
+        from django.template.loader import render_to_string
+        html_content = render_to_string('index.html', context)
+        
+        # Convert HTML to PDF or save as HTML file
+        # For simplicity, we'll save as HTML file to MinIO
+        import io
+        from django.core.files.base import ContentFile
+        
+        # Create a file-like object
+        file_content = ContentFile(html_content.encode('utf-8'))
+        file_content.name = f"id_cards/{user.email}.html"
+        
+        # Upload to MinIO
+        url = _upload_file_to_minio_global(user, file_content)
+        if url is None:
+            return Response({'error': 'Failed to upload ID card to storage'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Update IDCard record with the URL
+        id_card.id_card_url = url
+        id_card.save()
+        
+        serializer = self.get_serializer(id_card)
+        return Response({
+            'message': 'ID card generated successfully',
+            'id_card': serializer.data
+        })
 
     @action(detail=True, methods=['patch'])
     def upload_profile(self, request, pk=None):
-        student = self.get_object()
+        idcard = self.get_object()
         file = request.FILES.get('profile_picture')
         if not file:
             return Response({'error': 'profile_picture parameter required'}, status=status.HTTP_400_BAD_REQUEST)
-        url = self._upload_file_to_minio(student, file)
+        url = self._upload_file_to_minio(idcard, file)
         if url is None:
             return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        student.profile_picture = url
-        student.save()
-        serializer = self.get_serializer(student)
+        idcard.id_card_url = url
+        idcard.save()
+        serializer = self.get_serializer(idcard)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
@@ -309,7 +659,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             url = self._upload_file_to_minio(instance, file)
             if url is None:
                 return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            data['profile_picture'] = url
+            data['id_card_url'] = url
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -322,15 +672,14 @@ class StudentViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
         file = request.FILES.get('profile_picture') or request.FILES.get('file')
-        # For create, we may not have a Student instance yet; use fallbacks from request data
+        # For create, we may not have an IDCard instance yet; use fallbacks from request data
         fallback_email = data.get('email')
-        fallback_student_id = data.get('student_id')
         if file:
-            # No Student instance yet; rely on fallback values for object path
-            url = self._upload_file_to_minio(None, file, fallback_email=fallback_email, fallback_student_id=fallback_student_id)
+            # No IDCard instance yet; rely on fallback values for object path
+            url = self._upload_file_to_minio(None, file, fallback_email=fallback_email)
             if url is None:
                 return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            data['profile_picture'] = url
+            data['id_card_url'] = url
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -575,6 +924,7 @@ class AdminViewSet(viewsets.ModelViewSet):
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
 
+
 # ------------------- PARENT VIEWSET -------------------
 class ParentViewSet(viewsets.ModelViewSet):
     queryset = Parent.objects.all()
@@ -655,8 +1005,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get current time with seconds precision
-        now = timezone.now()
+        # Get current time with seconds precision in IST
+        now = timezone.now().astimezone(IST)
         current_time = now.time()
         current_date = now.date()
         
@@ -701,7 +1051,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         # Get all non-parent users
         users_qs = User.objects.exclude(role='Parent')
         
-        today = timezone.now().date()
+        today = timezone.now().astimezone(IST).date()
         users_data = []
 
         for user in users_qs:
@@ -777,7 +1127,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            target_date = timezone.now().date()
+            target_date = timezone.now().astimezone(IST).date()
 
         updated_count = 0
         errors = []
@@ -797,15 +1147,21 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                     errors.append({'user_email': user_email, 'error': 'Parents cannot have attendance records'})
                     continue
 
+                # Get or create attendance record with proper defaults
                 attendance, created = Attendance.objects.get_or_create(
                     user=user,
                     date=target_date,
                     defaults={
-                        'user': user
+                        'status': new_status,
+                        'user': user  # This ensures the role is set correctly in save()
                     }
                 )
-                attendance.status = new_status
-                attendance.save()
+                
+                # If the record already existed, update the status
+                if not created:
+                    attendance.status = new_status
+                    attendance.save()
+                    
                 updated_count += 1
 
             except User.DoesNotExist:
@@ -941,9 +1297,7 @@ class FormerMemberViewSet(viewsets.ReadOnlyModelViewSet):
         member.save()
         serializer = self.get_serializer(member)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# =================== FACE + LOCATION ATTENDANCE (STUDENTS) ===================
+# =================== FACE + LOCATION ATTENDANCE (ALL USERS) ===================
 # Office location and radius
 OFFICE_LAT = 13.068906816007116
 OFFICE_LON = 77.55541294505542
@@ -963,12 +1317,12 @@ def _verify_location(latitude: float, longitude: float, radius_meters: int | Non
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def school_attendance_view(request):
-    """Mark student attendance by matching face image and verifying location."""
-    # Only require face_recognition if an image is provided; allow deterministic marking via student_email otherwise
+    """Mark attendance by matching face image and verifying location for all users (except parents)."""
+    # Only require face_recognition if an image is provided; allow deterministic marking via user_email otherwise
     if face_recognition is None and (request.FILES.get('image') or request.FILES.get('file')):
         return JsonResponse({
             'status': 'error',
-            'message': 'face_recognition package not installed. Please install dependencies or provide student_email without an image.'
+            'message': 'face_recognition package not installed. Please install dependencies or provide user_email without an image.'
         }, status=500)
 
     lat = request.POST.get('latitude')
@@ -982,9 +1336,9 @@ def school_attendance_view(request):
         return JsonResponse({'status': 'fail', 'message': 'Invalid latitude or longitude'}, status=400)
 
     uploaded_file = request.FILES.get('image') or request.FILES.get('file')
-    forced_email = request.POST.get('student_email')
+    forced_email = request.POST.get('user_email')  # Changed from student_email to user_email
     if not uploaded_file and not forced_email:
-        return JsonResponse({'status': 'fail', 'message': 'Provide either student_email or an image'}, status=400)
+        return JsonResponse({'status': 'fail', 'message': 'Provide either user_email or an image'}, status=400)
 
     tmp_path = None
     if uploaded_file:
@@ -1010,27 +1364,27 @@ def school_attendance_view(request):
         if forced_email:
             try:
                 matched_user = User.objects.get(email=forced_email)
-                # Check if user is a parent or student (both should not have face recognition attendance)
+                # Check if user is a parent (parents should not have attendance)
                 if matched_user.role == 'Parent':
                     return JsonResponse({'status': 'fail', 'message': f'Parents cannot have attendance records'}, status=400)
-                if matched_user.role == 'Student':
-                    return JsonResponse({'status': 'fail', 'message': f'Students cannot have face recognition attendance'}, status=400)
+                # Removed restriction that prevented students from having face recognition attendance
             except User.DoesNotExist:
                 return JsonResponse({'status': 'fail', 'message': f'User not found: {forced_email}'}, status=404)
         elif uploaded_encoding is not None:
             # Auto-set check_in for face recognition flow
             check_in = timezone.now().time()
             
-            # Iterate over users (except parents and students) with profile images and pick the best match by distance
+            # Iterate over users (except parents) with profile images and pick the best match by distance
             best_user = None
             best_distance = None
-            # Get all non-parent, non-student users with profile pictures
+            # Get all non-parent users with profile pictures
             # We need to check profile pictures in related models since User doesn't have this field directly
-            candidates = User.objects.exclude(role__in=['Parent', 'Student']).filter(
+            candidates = User.objects.exclude(role='Parent').filter(
                 models.Q(teacher__profile_picture__isnull=False) & ~models.Q(teacher__profile_picture='') |
                 models.Q(admin__profile_picture__isnull=False) & ~models.Q(admin__profile_picture='') |
                 models.Q(principal__profile_picture__isnull=False) & ~models.Q(principal__profile_picture='') |
-                models.Q(management__profile_picture__isnull=False) & ~models.Q(management__profile_picture='')
+                models.Q(management__profile_picture__isnull=False) & ~models.Q(management__profile_picture='') |
+                models.Q(student__profile_picture__isnull=False) & ~models.Q(student__profile_picture='')
             ).distinct()
             for user in candidates:
                 try:
@@ -1044,8 +1398,7 @@ def school_attendance_view(request):
                         profile_obj = user.principal
                     elif hasattr(user, 'management') and user.management and user.management.profile_picture:
                         profile_obj = user.management
-                    # Students are excluded from face recognition attendance
-                    elif hasattr(user, 'student') and user.student and user.student.profile_picture and user.role != 'Student':
+                    elif hasattr(user, 'student') and user.student and user.student.profile_picture:
                         profile_obj = user.student
                     
                     if not profile_obj or not profile_obj.profile_picture:
@@ -1087,7 +1440,7 @@ def school_attendance_view(request):
             }, status=400)
 
         # Mark attendance for today (works regardless of USE_TZ setting)
-        today = timezone.now().date()
+        today = timezone.now().astimezone(IST).date()
         # Allow overriding status and remarks
         status_param = request.POST.get('status')
         if status_param not in (None, 'Present', 'Absent'):
@@ -1756,7 +2109,6 @@ class FinanceTransactionViewSet(viewsets.ModelViewSet):
 
 
 # ------------------- TRANSPORT DETAILS VIEWSET -------------------
-
 class TransportDetailsViewSet(viewsets.ModelViewSet):
     queryset = TransportDetails.objects.all()
     serializer_class = TransportDetailsSerializer
@@ -1885,46 +2237,3 @@ class HolidayViewSet(viewsets.ModelViewSet):
                 errors.append({'index': idx, 'error': str(e), 'item': item})
 
         return Response({'created': created, 'updated': updated, 'errors': errors}, status=status.HTTP_200_OK)
-
-
-# ------------------- AWARD VIEWSET -------------------
-class AwardViewSet(viewsets.ModelViewSet):
-    queryset = Award.objects.all()
-    serializer_class = AwardSerializer
-    permission_classes = [AllowAny]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
-    filterset_fields = ['email']
-    search_fields = ['title', 'description', 'email__email']
-    ordering_fields = ['created_at', 'title']
-
-    @action(detail=False, methods=['post'])
-    def bulk_upsert(self, request):
-        """Upsert awards by (email, title). Expects JSON array."""
-        if not isinstance(request.data, list):
-            return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
-        created = 0
-        updated = 0
-        errors: list[dict] = []
-        for idx, item in enumerate(request.data):
-            try:
-                email = item.get('email')
-                title = item.get('title')
-                if not email or not title:
-                    raise ValueError('email and title are required')
-                try:
-                    user = User.objects.get(email=email)
-                except User.DoesNotExist:
-                    raise ValueError(f"User not found: {email}")
-                defaults = {k: v for k, v in item.items() if k not in ('email', 'title')}
-                obj, was_created = Award.objects.update_or_create(
-                    email=user,
-                    title=title,
-                    defaults=defaults
-                )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception as e:
-                errors.append({'index': idx, 'error': str(e), 'item': item})
-        return Response({'created': created, 'updated': updated, 'errors': errors})

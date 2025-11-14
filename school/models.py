@@ -255,7 +255,7 @@ class Parent(models.Model):
 # ------------------- ATTENDANCE -------------------
 class Attendance(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, to_field='email', related_name='attendance_records')
-    date = models.DateField(auto_now_add=True)
+    date = models.DateField()
     check_in = models.TimeField(auto_now_add=True)  # Includes seconds precision
     check_out = models.TimeField(null=True, blank=True)  # Includes seconds precision
     status = models.CharField(max_length=20, default='Absent', editable=False)
@@ -457,6 +457,7 @@ class Timetable(models.Model):
         return f"{self.class_id.class_name} {self.class_id.sec} - {self.subject.subject_name} - {self.day_of_week} {self.start_time}-{self.end_time}"
 
 
+# ------------------- ASSIGNMENT -------------------
 class Assignment(models.Model):
     STATUS_CHOICES = [
         ('Assigned', 'Assigned'),
@@ -663,6 +664,8 @@ class Holiday(models.Model):
     def __str__(self):
         return f"{self.name} ({self.date} - {self.weekday})"
 
+
+# ------------------- LEAVE -------------------
 class Leave(models.Model):
     LEAVE_TYPES = [
         ('Sick', 'Sick'),
@@ -693,6 +696,7 @@ class Leave(models.Model):
         return f"{self.applicant.email} - {self.leave_type} ({self.status})"
 
 
+# ------------------- TASK DETAILS -------------------
 class Task(models.Model):
     STATUS_CHOICES = [
         ('Todo', 'Todo'),
@@ -863,7 +867,6 @@ class FinanceTransaction(models.Model):
 
 
 # ------------------- TRANSPORT DETAILS -------------------
-
 class TransportDetails(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, to_field='email', related_name='transport_details')
     route_name = models.CharField(max_length=100)
@@ -879,3 +882,14 @@ class TransportDetails(models.Model):
 
     def __str__(self):
         return f"{self.user.fullname} - {self.route_name}"
+
+
+# ------------------- ID CARD -------------------
+class IDCard(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, to_field='email', related_name='id_card')
+    id_card_url = models.URLField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"ID Card for {self.user.email}"
