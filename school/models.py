@@ -155,6 +155,7 @@ class Teacher(models.Model):
     qualification = models.CharField(max_length=255, null=True, blank=True)
     experience_years = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     profile_picture = models.URLField(null=True, blank=True)
+    barcode_url = models.URLField(null=True, blank=True)  # New field for storing barcode image URL
     residential_address = models.TextField(null=True, blank=True)
     emergency_contact_name = models.CharField(max_length=100, null=True, blank=True)
     emergency_contact_relationship = models.CharField(max_length=50, null=True, blank=True)
@@ -201,6 +202,7 @@ class Principal(models.Model):
     total_experience = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     bio = models.TextField(null=True, blank=True)
     profile_picture = models.URLField(null=True, blank=True)
+    barcode_url = models.URLField(null=True, blank=True)  # New field for storing barcode image URL
     office_address = models.TextField(null=True, blank=True)
 
     def __str__(self):
@@ -217,6 +219,7 @@ class Management(models.Model):
     date_joined = models.DateField(null=True, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='management_staff')
     profile_picture = models.URLField(null=True, blank=True)
+    barcode_url = models.URLField(null=True, blank=True)  # New field for storing barcode image URL
     office_address = models.TextField(null=True, blank=True)
 
     class Meta:
@@ -233,6 +236,7 @@ class Admin(models.Model):
     phone = models.CharField(max_length=20, null=True, blank=True)
     office_address = models.TextField(null=True, blank=True)
     profile_picture = models.URLField(null=True, blank=True)
+    barcode_url = models.URLField(null=True, blank=True)  # New field for storing barcode image URL
 
     def __str__(self):
         return f"{self.fullname} (Admin)"
@@ -292,6 +296,33 @@ class Attendance(models.Model):
         # Set the role dynamically based on the user's actual role
         if not self.role:
             self.role = self.user.role
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+# ------------------- STUDENT ATTENDANCE -------------------
+class StudentAttendance(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='student_attendance_records')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='student_attendance_records')
+    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, to_field='email', related_name='student_attendance_records')
+    class_id = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='student_attendance_records')
+    date = models.DateField()
+    status = models.CharField(max_length=20, choices=[
+        ('Present', 'Present'),
+        ('Absent', 'Absent'),
+        ('Late', 'Late'),
+        ('Excused', 'Excused'),
+    ], default='Absent')
+    created_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['student', 'subject', 'date']
+        ordering = ['-date', '-created_time']
+
+    def __str__(self):
+        return f"{self.student.fullname} - {self.subject.subject_name} - {self.date} ({self.status})"
+
+    def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
 

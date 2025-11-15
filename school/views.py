@@ -23,12 +23,20 @@ try:
 except Exception:  # pragma: no cover
     face_recognition = None
 
+# Import barcode library
+try:
+    import barcode
+    from barcode.writer import ImageWriter
+except Exception:  # pragma: no cover
+    barcode = None
+    ImageWriter = None
+
 # Define IST timezone for Indian Standard Time
 IST = pytz.timezone("Asia/Kolkata")
 
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
-    Department, Subject, Attendance, Grade, FeeStructure,
+    Department, Subject, Attendance, StudentAttendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award, Assignment, SubmittedAssignment, Leave, Task,
     Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class, IDCard,
 )
@@ -39,6 +47,7 @@ from .serializers import (
     PrincipalSerializer, ManagementSerializer, AdminSerializer, ParentSerializer,
     DepartmentSerializer, SubjectSerializer, ClassSerializer,
     AttendanceSerializer, AttendanceCreateSerializer, AttendanceUpdateSerializer,
+    StudentAttendanceSerializer, StudentAttendanceCreateSerializer,
     GradeSerializer, GradeCreateSerializer,
     FeeStructureSerializer, FeePaymentSerializer, FeePaymentCreateSerializer,
     TimetableSerializer, TimetableCreateSerializer, FormerMemberSerializer,
@@ -199,6 +208,36 @@ class UserViewSet(viewsets.ModelViewSet):
         user.is_active = False
         user.save()
         return Response({'message': 'User deactivated successfully'})
+
+    @action(detail=True, methods=['post'])
+    def generate_barcode(self, request, pk=None):
+        """Generate a barcode for a user and store the URL"""
+        user = self.get_object()
+        
+        # Check if barcode library is available
+        if barcode is None or ImageWriter is None:
+            return Response({'error': 'Barcode generation library not installed. Please install python-barcode.'}, 
+                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        try:
+            # Generate barcode and upload to MinIO
+            barcode_url = _generate_barcode_for_user(user)
+            
+            if barcode_url is None:
+                return Response({'error': 'Failed to generate barcode'}, 
+                              status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Save the barcode URL to the user record
+            user.barcode_url = barcode_url
+            user.save()
+            
+            return Response({
+                'message': 'Barcode generated successfully',
+                'barcode_url': barcode_url
+            })
+        except Exception as e:
+            return Response({'error': f'Failed to generate barcode: {str(e)}'}, 
+                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ------------------- ID CARD VIEW -------------------
@@ -490,201 +529,59 @@ class IDCardViewSet(viewsets.ModelViewSet):
             base += '/'
         return f"{base}{object_name}"
 
-    @action(detail=False, methods=['get'])
-    def check_by_email(self, request):
-        """Check if an ID card exists for a user by email"""
-        email = request.query_params.get('email')
-        if not email:
-            return Response({'error': 'Email parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+ 
+def _generate_barcode_for_user(user):
+    """Generate a barcode for a user and upload it to MinIO."""
+    # Check if barcode library is available
+    if barcode is None or ImageWriter is None:
+        return None
+    
+    try:
+        # Create a Code128 barcode using the user's email as the data
+        code128 = barcode.get_barcode_class('code128')
+        barcode_instance = code128(user.email, writer=ImageWriter())
         
-        try:
-            user = User.objects.get(email=email)
-            id_card, created = IDCard.objects.get_or_create(user=user)
-            
-            if id_card.id_card_url:
-                # ID card exists
-                serializer = self.get_serializer(id_card)
-                return Response({
-                    'exists': True,
-                    'id_card': serializer.data
-                })
-            else:
-                # ID card doesn't exist
-                return Response({
-                    'exists': False,
-                    'message': 'ID card not found for this user'
-                })
-        except User.DoesNotExist:
-            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    @action(detail=False, methods=['post'])
-    def generate_id_card(self, request):
-        """Generate ID card for a user and store in MinIO"""
-        email = request.data.get('email')
-        if not email:
-            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+        # Generate the barcode image in memory
+        from io import BytesIO
+        buffer = BytesIO()
+        barcode_instance.write(buffer)
+        buffer.seek(0)
         
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        # Create a temporary file to upload to MinIO
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+            tmp_file.write(buffer.getvalue())
+            tmp_file_path = tmp_file.name
         
-        # Get or create IDCard record
-        id_card, created = IDCard.objects.get_or_create(user=user)
-        
-        # Generate ID card HTML
-        context = {
-            'name': 'NAME SURNAME',
-            'position': 'Your Position Here',
-            'dob': 'MM/DD/YEAR',
-            'email': user.email,
-            'phone': '+91 9876543210',
-            'id_no': 'RST-0012',
-            'profile_picture': 'profile.jpg',
-            'barcode': 'barcode.png',
-            'company_name': 'SCHOOL NAME',
-        }
-        
-        # Populate context with actual user data
-        if hasattr(user, 'student') and user.student:
-            student = user.student
-            context['name'] = student.fullname
-            context['dob'] = student.date_of_birth.strftime('%m/%d/%Y') if student.date_of_birth else 'MM/DD/YEAR'
-            context['phone'] = student.phone or '+91 9876543210'
-            context['id_no'] = student.student_id or 'RST-0012'
-            context['profile_picture'] = student.profile_picture or 'profile.jpg'
-            
-            # Add class information if available
-            if student.class_id:
-                context['position'] = f"Student - {student.class_id.class_name} {student.class_id.sec}"
-                
-        elif hasattr(user, 'teacher') and user.teacher:
-            teacher = user.teacher
-            context['name'] = teacher.fullname
-            context['dob'] = teacher.date_of_birth.strftime('%m/%d/%Y') if teacher.date_of_birth else 'MM/DD/YEAR'
-            context['phone'] = teacher.phone or '+91 9876543210'
-            context['id_no'] = teacher.teacher_id or 'RST-0012'
-            context['profile_picture'] = teacher.profile_picture or 'profile.jpg'
-            
-            # Add department information if available
-            if teacher.department:
-                context['position'] = f"Teacher - {teacher.department.department_name}"
-                
-        elif hasattr(user, 'principal') and user.principal:
-            principal = user.principal
-            context['name'] = principal.fullname
-            context['dob'] = principal.date_of_birth.strftime('%m/%d/%Y') if principal.date_of_birth else 'MM/DD/YYEAR'
-            context['phone'] = principal.phone or '+91 9876543210'
-            context['id_no'] = 'PRN-001'
-            context['profile_picture'] = principal.profile_picture or 'profile.jpg'
-            context['position'] = 'Principal'
-            
-        elif hasattr(user, 'management') and user.management:
-            management = user.management
-            context['name'] = management.fullname
-            context['dob'] = management.date_of_birth.strftime('%m/%d/%Y') if management.date_of_birth else 'MM/DD/YEAR'
-            context['phone'] = management.phone or '+91 9876543210'
-            context['id_no'] = 'MGT-001'
-            context['profile_picture'] = management.profile_picture or 'profile.jpg'
-            
-            # Add designation if available
-            if management.designation:
-                context['position'] = f"Management - {management.designation}"
-                
-        elif hasattr(user, 'admin') and user.admin:
-            admin = user.admin
-            context['name'] = admin.fullname
-            context['phone'] = admin.phone or '+91 9876543210'
-            context['id_no'] = 'ADM-001'
-            context['profile_picture'] = admin.profile_picture or 'profile.jpg'
-            context['position'] = 'Admin'
-            
-        elif hasattr(user, 'parent') and user.parent:
-            parent = user.parent
-            context['name'] = parent.fullname
-            context['dob'] = parent.date_of_birth.strftime('%m/%d/%Y') if parent.date_of_birth else 'MM/DD/YEAR'
-            context['phone'] = parent.phone or '+91 9876543210'
-            context['id_no'] = 'PRT-001'
-            context['profile_picture'] = parent.profile_picture or 'profile.jpg'
-            context['position'] = 'Parent'
-        
-        # Render the ID card template
-        from django.template.loader import render_to_string
-        html_content = render_to_string('index.html', context)
-        
-        # Convert HTML to PDF or save as HTML file
-        # For simplicity, we'll save as HTML file to MinIO
-        import io
-        from django.core.files.base import ContentFile
-        
-        # Create a file-like object
-        file_content = ContentFile(html_content.encode('utf-8'))
-        file_content.name = f"id_cards/{user.email}.html"
+        # Create a Django file-like object
+        from django.core.files.base import File
+        barcode_file = File(open(tmp_file_path, 'rb'))
+        barcode_file.name = f"barcodes/{user.email}.png"
         
         # Upload to MinIO
-        url = _upload_file_to_minio_global(user, file_content)
-        if url is None:
-            return Response({'error': 'Failed to upload ID card to storage'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        url = _upload_file_to_minio_global(user, barcode_file)
         
-        # Update IDCard record with the URL
-        id_card.id_card_url = url
-        id_card.save()
+        # Clean up temporary file
+        os.unlink(tmp_file_path)
+        barcode_file.close()
         
-        serializer = self.get_serializer(id_card)
-        return Response({
-            'message': 'ID card generated successfully',
-            'id_card': serializer.data
-        })
+        return url
+    except Exception:
+        # If barcode generation fails, return None
+        return None
 
-    @action(detail=True, methods=['patch'])
-    def upload_profile(self, request, pk=None):
-        idcard = self.get_object()
-        file = request.FILES.get('profile_picture')
-        if not file:
-            return Response({'error': 'profile_picture parameter required'}, status=status.HTTP_400_BAD_REQUEST)
-        url = self._upload_file_to_minio(idcard, file)
-        if url is None:
-            return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        idcard.id_card_url = url
-        idcard.save()
-        serializer = self.get_serializer(idcard)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        data = request.data.copy()
-        file = request.FILES.get('profile_picture') or request.FILES.get('file')
-        if file:
-            url = self._upload_file_to_minio(instance, file)
-            if url is None:
-                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            data['id_card_url'] = url
-        serializer = self.get_serializer(instance, data=data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+def _object_name_for_barcode_global(user) -> str:
+    """Generate object name for user barcode."""
+    identifier = None
+    if hasattr(user, 'email'):
+        identifier = user.email.split('@')[0]
+    if not identifier:
+        identifier = 'unknown'
+    return f"barcodes/{identifier}.png"
 
-    def partial_update(self, request, *args, **kwargs):
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
 
-    def create(self, request, *args, **kwargs):
-        data = request.data.copy()
-        file = request.FILES.get('profile_picture') or request.FILES.get('file')
-        # For create, we may not have an IDCard instance yet; use fallbacks from request data
-        fallback_email = data.get('email')
-        if file:
-            # No IDCard instance yet; rely on fallback values for object path
-            url = self._upload_file_to_minio(None, file, fallback_email=fallback_email)
-            if url is None:
-                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            data['id_card_url'] = url
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+# ------------------- USER REGISTRATION -------------------
+# Class UserRegistrationView was removed as it was a duplicate of the register_user function
 
 
 # ------------------- TIMETABLE VIEWSET -------------------
@@ -1174,6 +1071,115 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             'errors': errors
         })
 
+# ------------------- STUDENT ATTENDANCE VIEWSET -------------------
+class StudentAttendanceViewSet(viewsets.ModelViewSet):
+    queryset = StudentAttendance.objects.all().select_related('student', 'subject', 'teacher', 'class_id')
+    serializer_class = StudentAttendanceSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['student', 'subject', 'teacher', 'class_id', 'date', 'status']
+    search_fields = ['student__fullname', 'subject__subject_name', 'teacher__fullname', 'class_id__class_name']
+    ordering_fields = ['date', 'created_time', 'student__fullname']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return StudentAttendanceCreateSerializer
+        return StudentAttendanceSerializer
+
+    def list(self, request):
+        """
+        GET /api/student-attendance/
+        Returns all student attendance records from the database
+        """
+        return super().list(request)
+
+    @action(detail=False, methods=['get'])
+    def by_student(self, request):
+        """
+        GET /api/student-attendance/by_student/
+        Get attendance records for a specific student
+        """
+        student_email = request.query_params.get('student_email')
+        if not student_email:
+            return Response({'error': 'student_email parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            student = Student.objects.get(email=student_email)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+        attendance_records = self.get_queryset().filter(student=student)
+        serializer = self.get_serializer(attendance_records, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def by_class(self, request):
+        """
+        GET /api/student-attendance/by_class/
+        Get attendance records for a specific class
+        """
+        class_id = request.query_params.get('class_id')
+        if not class_id:
+            return Response({'error': 'class_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        attendance_records = self.get_queryset().filter(class_id=class_id)
+        serializer = self.get_serializer(attendance_records, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def by_subject(self, request):
+        """
+        GET /api/student-attendance/by_subject/
+        Get attendance records for a specific subject
+        """
+        subject_id = request.query_params.get('subject_id')
+        if not subject_id:
+            return Response({'error': 'subject_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        attendance_records = self.get_queryset().filter(subject=subject_id)
+        serializer = self.get_serializer(attendance_records, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def bulk_create(self, request):
+        """
+        POST /api/student-attendance/bulk_create/
+        Create multiple student attendance records
+        Body: [
+            {
+                "student": "student@example.com",
+                "subject": 1,
+                "teacher": "teacher@example.com",
+                "class_id": 1,
+                "date": "2023-10-01",
+                "status": "Present"
+            },
+            ...
+        ]
+        """
+        if not isinstance(request.data, list):
+            return Response({'error': 'Expected a JSON array'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        created_count = 0
+        errors = []
+        
+        for idx, record_data in enumerate(request.data):
+            try:
+                # Create a serializer instance for validation
+                serializer = StudentAttendanceCreateSerializer(data=record_data)
+                if serializer.is_valid():
+                    serializer.save()
+                    created_count += 1
+                else:
+                    errors.append({'index': idx, 'errors': serializer.errors, 'data': record_data})
+            except Exception as e:
+                errors.append({'index': idx, 'error': str(e), 'data': record_data})
+        
+        return Response({
+            'created_count': created_count,
+            'errors': errors
+        }, status=status.HTTP_201_CREATED if not errors else status.HTTP_207_MULTI_STATUS)
+
 # ------------------- GRADE VIEWSET -------------------
 class GradeViewSet(viewsets.ModelViewSet):
     queryset = Grade.objects.all()
@@ -1337,8 +1343,11 @@ def school_attendance_view(request):
 
     uploaded_file = request.FILES.get('image') or request.FILES.get('file')
     forced_email = request.POST.get('user_email')  # Changed from student_email to user_email
-    if not uploaded_file and not forced_email:
-        return JsonResponse({'status': 'fail', 'message': 'Provide either user_email or an image'}, status=400)
+    barcode = request.POST.get('barcode')  # New parameter for barcode scanning
+    
+    # Require at least one method: image, email, or barcode
+    if not uploaded_file and not forced_email and not barcode:
+        return JsonResponse({'status': 'fail', 'message': 'Provide either user_email, barcode, or an image'}, status=400)
 
     tmp_path = None
     if uploaded_file:
@@ -1355,22 +1364,42 @@ def school_attendance_view(request):
             uploaded_img = fr.load_image_file(tmp_path)
             uploaded_encodings = fr.face_encodings(uploaded_img)
             if not uploaded_encodings:
-                return JsonResponse({'status': 'fail', 'message': 'No face detected'}, status=400)
-            uploaded_encoding = uploaded_encodings[0]
+                # If face detection fails, try barcode as fallback
+                if not barcode and not forced_email:
+                    return JsonResponse({'status': 'fail', 'message': 'No face detected. Please provide barcode or user_email as fallback.'}, status=400)
+            else:
+                uploaded_encoding = uploaded_encodings[0]
 
         # Determine target user (excluding parents)
         matched_user = None
         from .models import User, Attendance  # local import to avoid cycles
-        if forced_email:
+        
+        # Try barcode first if provided
+        if barcode:
+            try:
+                # Assuming barcode is the user's email for simplicity
+                # In a real implementation, you might have a separate barcode field
+                matched_user = User.objects.get(email=barcode)
+                # Check if user is a parent (parents should not have attendance)
+                if matched_user.role == 'Parent':
+                    return JsonResponse({'status': 'fail', 'message': f'Parents cannot have attendance records'}, status=400)
+            except User.DoesNotExist:
+                # If barcode lookup fails, continue with other methods
+                if not uploaded_file and not forced_email:
+                    return JsonResponse({'status': 'fail', 'message': f'User not found for barcode: {barcode}'}, status=404)
+        
+        # Try forced email if provided and barcode didn't work
+        if forced_email and not matched_user:
             try:
                 matched_user = User.objects.get(email=forced_email)
                 # Check if user is a parent (parents should not have attendance)
                 if matched_user.role == 'Parent':
                     return JsonResponse({'status': 'fail', 'message': f'Parents cannot have attendance records'}, status=400)
-                # Removed restriction that prevented students from having face recognition attendance
             except User.DoesNotExist:
                 return JsonResponse({'status': 'fail', 'message': f'User not found: {forced_email}'}, status=404)
-        elif uploaded_encoding is not None:
+        
+        # Try face recognition if image was provided and other methods didn't work
+        elif uploaded_encoding is not None and not matched_user:
             # Auto-set check_in for face recognition flow
             check_in = timezone.now().time()
             
@@ -1448,9 +1477,10 @@ def school_attendance_view(request):
         remarks_param = request.POST.get('remarks')
 
         # Create or update attendance record with auto check_in
+        # Only set check_in time if we used face recognition
         attendance_data = {
-            'check_in': check_in if 'check_in' in locals() else None,
-            'status': 'Present',  # Auto-mark as present for face recognition
+            'check_in': timezone.now().time() if (uploaded_encoding and matched_user == best_user) else None,
+            'status': 'Present',  # Auto-mark as present
             'user': matched_user
         }
         attendance, created = Attendance.objects.update_or_create(
@@ -1475,6 +1505,13 @@ def school_attendance_view(request):
         elif hasattr(matched_user, 'student') and matched_user.student:
             user_name = matched_user.student.fullname
             
+        # Determine which method was used
+        method_used = "email"
+        if barcode and matched_user.email == barcode:
+            method_used = "barcode"
+        elif uploaded_encoding and matched_user == best_user:
+            method_used = "face_recognition"
+            
         return JsonResponse({
             'status': 'success',
             'message': f'Attendance marked for {user_name}',
@@ -1482,6 +1519,7 @@ def school_attendance_view(request):
             'email': matched_user.email,
             'date': str(today),
             'role': matched_user.role,
+            'method_used': method_used
         })
     finally:
         try:

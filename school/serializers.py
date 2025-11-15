@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
-    Department, Subject, Attendance, Grade, FeeStructure,
+    Department, Subject, Attendance, StudentAttendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
     Assignment, SubmittedAssignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class, IDCard
 )
@@ -228,6 +228,52 @@ class AttendanceUpdateSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         return super().update(instance, validated_data)
+
+
+# ------------------- STUDENT ATTENDANCE SERIALIZERS -------------------
+class StudentAttendanceSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.fullname', read_only=True)
+    subject_name = serializers.CharField(source='subject.subject_name', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.fullname', read_only=True)
+    class_name = serializers.CharField(source='class_id.class_name', read_only=True)
+    section = serializers.CharField(source='class_id.sec', read_only=True)
+    date = serializers.DateField(format='%Y-%m-%d')
+
+    class Meta:
+        model = StudentAttendance
+        fields = '__all__'
+        read_only_fields = ['created_time']
+
+
+class StudentAttendanceCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentAttendance
+        fields = ['student', 'subject', 'teacher', 'class_id', 'date', 'status']
+
+    def validate(self, attrs):
+        student = attrs.get('student')
+        subject = attrs.get('subject')
+        date = attrs.get('date')
+        
+        # Check if attendance record already exists for this student, subject, and date
+        if StudentAttendance.objects.filter(student=student, subject=subject, date=date).exists():
+            raise serializers.ValidationError(
+                'Attendance record already exists for this student, subject, and date.'
+            )
+        
+        # Verify that the teacher teaches this subject
+        if not Teacher.objects.filter(email=attrs['teacher'].email, subjects=subject).exists():
+            raise serializers.ValidationError(
+                'The specified teacher does not teach this subject.'
+            )
+        
+        # Verify that the student is in the specified class
+        if student.class_id != attrs['class_id']:
+            raise serializers.ValidationError(
+                'The specified class does not match the student\'s assigned class.'
+            )
+        
+        return attrs
 
 
 # ------------------- GRADE SERIALIZERS -------------------

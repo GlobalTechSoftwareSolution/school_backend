@@ -67,6 +67,14 @@ urlpatterns = [
     path('mark_students_attendance/', views.AttendanceViewSet.as_view({'post': 'bulk_update_status'}), name='attendance-bulk-update'),
     path('school_attendance/', views.school_attendance_view, name='school-attendance-view'),
     
+    # Student Attendance
+    path('student_attendance/', views.StudentAttendanceViewSet.as_view({'get': 'list', 'post': 'create'}), name='student-attendance-list'),
+    path('student_attendance/<int:pk>/', views.StudentAttendanceViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='student-attendance-detail'),
+    path('student_attendance/by_student/', views.StudentAttendanceViewSet.as_view({'get': 'by_student'}), name='student-attendance-by-student'),
+    path('student_attendance/by_class/', views.StudentAttendanceViewSet.as_view({'get': 'by_class'}), name='student-attendance-by-class'),
+    path('student_attendance/by_subject/', views.StudentAttendanceViewSet.as_view({'get': 'by_subject'}), name='student-attendance-by-subject'),
+    path('student_attendance/bulk_create/', views.StudentAttendanceViewSet.as_view({'post': 'bulk_create'}), name='student-attendance-bulk-create'),
+
     # Grades
     path('grades/', views.GradeViewSet.as_view({'get': 'list', 'post': 'create'}), name='grade-list'),
     path('grades/<int:pk>/', views.GradeViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='grade-detail'),
