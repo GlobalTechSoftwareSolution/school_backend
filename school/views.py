@@ -579,8 +579,9 @@ class IDCardViewSet(viewsets.ModelViewSet):
 
             # Create PDF with dimensions matching the HTML template (330px width)
             # Convert pixels to points (1 pixel = 0.75 points)
+            # Increase height from 400 to 450 pixels to add more space below barcode
             width_points = 330 * 0.75
-            height_points = 400 * 0.75
+            height_points = 450 * 0.75
             
             # Create a BytesIO buffer for the PDF
             pdf_buffer = BytesIO()
@@ -614,7 +615,8 @@ class IDCardViewSet(viewsets.ModelViewSet):
             # Draw profile picture area (110x110px)
             profile_size = 110 * 0.75
             profile_x = width_points // 2 - profile_size // 2
-            profile_y = height_points - 70*0.75 - profile_size
+            # Move profile picture up (decrease offset from 100*0.75 to 90*0.75)
+            profile_y = height_points - 90*0.75 - profile_size
             
             # Add white border around profile picture
             border_width = 5 * 0.75
@@ -640,7 +642,7 @@ class IDCardViewSet(viewsets.ModelViewSet):
                     pass
             
             # Add user name and position (shifted upward)
-            name_y = profile_y - 20*0.75
+            name_y = profile_y - 30*0.75  # Moved up from 40*0.75 to 30*0.75
             c.setFillColor(text_color)
             c.setFont("Helvetica-Bold", 15)
             c.drawCentredString(width_points/2, name_y, user_name)
@@ -651,7 +653,7 @@ class IDCardViewSet(viewsets.ModelViewSet):
             c.drawCentredString(width_points/2, position_y, position)
             
             # Add info section (shifted upward)
-            info_start_y = position_y - 18*0.75
+            info_start_y = position_y - 28*0.75  # Moved up from 38*0.75 to 28*0.75
             info_padding = 35 * 0.75
             info_x_start = info_padding
             info_x_end = width_points - info_padding
@@ -705,8 +707,8 @@ class IDCardViewSet(viewsets.ModelViewSet):
                         barcode_buffer.seek(0)
                     
                     # Add barcode to PDF if available (centered)
-                    # Move barcode upward (closer to blue header border)
-                    barcode_y = current_y - 35*0.75
+                    # Move barcode upward (closer to info section)
+                    barcode_y = current_y - 45*0.75  # Moved up from 55 to 45 pixels
                     barcode_width = 160 * 0.75
                     barcode_height = 45 * 0.75
                     barcode_x = width_points // 2 - barcode_width // 2
@@ -715,13 +717,17 @@ class IDCardViewSet(viewsets.ModelViewSet):
                     c.drawImage(ImageReader(barcode_buffer), 
                                barcode_x, barcode_y, 
                                barcode_width, barcode_height)
+                    
+                    # Add more space below the barcode (move footer down)
+                    space_below_barcode = 40 * 0.75  # Moved up from 50 to 40 pixels
             except Exception as e:
                 # If barcode generation fails, continue without it
                 pass
+                space_below_barcode = 0
             
-            # Draw footer
+            # Draw footer at the bottom of the card
             footer_height = 45 * 0.75
-            footer_y = 0
+            footer_y = 0  # Position at the very bottom
             c.setFillColor(header_color)
             c.rect(0, footer_y, width_points, footer_height, fill=1)
             
@@ -807,10 +813,21 @@ class IDCardViewSet(viewsets.ModelViewSet):
         # Check if ID card already exists
         id_card, created = IDCard.objects.get_or_create(user=user)
         
-        if not created and id_card.id_card_url:
-            # ID card already exists with URL, return it
-            serializer = self.get_serializer(id_card)
-            return Response(serializer.data)
+        # Always regenerate the ID card to ensure it's a PDF
+        # Generate PDF content for ID card
+        pdf_content = self._generate_id_card_pdf(user)
+        
+        # Upload to MinIO
+        url = self._upload_file_to_minio(user, pdf_content, email)
+        if url is None:
+            return Response({'error': 'Failed to upload ID card to storage'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Save URL to database
+        id_card.id_card_url = url
+        id_card.save()
+        
+        serializer = self.get_serializer(id_card)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
             
         # Generate PDF content for ID card
         pdf_content = self._generate_id_card_pdf(user)
