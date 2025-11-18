@@ -355,7 +355,7 @@ class Command(BaseCommand):
                             date=timezone.now().astimezone(IST).date(),
                             defaults={
                                 'status': random.choice(['Present', 'Absent', 'Late']),
-                                'created_time': timezone.now(),
+                                'created_time': timezone.now().astimezone(IST),
                             }
                         )
                     except Exception as e:
@@ -446,7 +446,7 @@ class Command(BaseCommand):
                         student=student,
                         defaults={
                             'submission_file': 'https://example.com/submitted_assignment.pdf',
-                            'submission_date': timezone.now(),
+                            'submission_date': timezone.now().astimezone(IST),
                             'grade': Decimal(random.randint(70, 95)),
                             'feedback': 'Good work!',
                             'is_late': False,
@@ -503,7 +503,7 @@ class Command(BaseCommand):
                         'degree': 'https://example.com/degree.pdf',
                         'marks_card': 'https://example.com/marks_card.pdf',
                         'certificates': 'https://example.com/certificates.pdf',
-                        'uploaded_at': timezone.now(),
+                        'uploaded_at': timezone.now().astimezone(IST),
                     }
                 )
             except Exception as e:
@@ -519,7 +519,7 @@ class Command(BaseCommand):
                     defaults={
                         'description': 'Awarded for outstanding academic performance',
                         'photo': 'https://example.com/award.jpg',
-                        'created_at': timezone.now(),
+                        'created_at': timezone.now().astimezone(IST),
                     }
                 )
             except Exception as e:
