@@ -155,7 +155,6 @@ class Teacher(models.Model):
     qualification = models.CharField(max_length=255, null=True, blank=True)
     experience_years = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     profile_picture = models.URLField(null=True, blank=True)
-    barcode_url = models.URLField(null=True, blank=True)  # New field for storing barcode image URL
     residential_address = models.TextField(null=True, blank=True)
     emergency_contact_name = models.CharField(max_length=100, null=True, blank=True)
     emergency_contact_relationship = models.CharField(max_length=50, null=True, blank=True)
@@ -202,7 +201,6 @@ class Principal(models.Model):
     total_experience = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     bio = models.TextField(null=True, blank=True)
     profile_picture = models.URLField(null=True, blank=True)
-    barcode_url = models.URLField(null=True, blank=True)  # New field for storing barcode image URL
     office_address = models.TextField(null=True, blank=True)
 
     def __str__(self):
@@ -219,7 +217,6 @@ class Management(models.Model):
     date_joined = models.DateField(null=True, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='management_staff')
     profile_picture = models.URLField(null=True, blank=True)
-    barcode_url = models.URLField(null=True, blank=True)  # New field for storing barcode image URL
     office_address = models.TextField(null=True, blank=True)
 
     class Meta:
@@ -236,7 +233,6 @@ class Admin(models.Model):
     phone = models.CharField(max_length=20, null=True, blank=True)
     office_address = models.TextField(null=True, blank=True)
     profile_picture = models.URLField(null=True, blank=True)
-    barcode_url = models.URLField(null=True, blank=True)  # New field for storing barcode image URL
 
     def __str__(self):
         return f"{self.fullname} (Admin)"

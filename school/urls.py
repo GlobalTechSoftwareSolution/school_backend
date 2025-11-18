@@ -12,8 +12,7 @@ urlpatterns = [
     path('login/', views.login_with_credentials, name='login'),
     
     # ID Card
-    path('', views.id_card_view, name='id-card'),
-    path('test-id-card/', views.test_id_card_view, name='test-id-card'),
+    path('id_card/', views.id_card_view, name='id-card'),
     
     # User Management
     path('users/', views.UserViewSet.as_view({'get': 'list', 'post': 'create'}), name='user-list'),

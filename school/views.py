@@ -209,37 +209,6 @@ class UserViewSet(viewsets.ModelViewSet):
         user.save()
         return Response({'message': 'User deactivated successfully'})
 
-    @action(detail=True, methods=['post'])
-    def generate_barcode(self, request, pk=None):
-        """Generate a barcode for a user and store the URL"""
-        user = self.get_object()
-        
-        # Check if barcode library is available
-        if barcode is None or ImageWriter is None:
-            return Response({'error': 'Barcode generation library not installed. Please install python-barcode.'}, 
-                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        try:
-            # Generate barcode and upload to MinIO
-            barcode_url = _generate_barcode_for_user(user)
-            
-            if barcode_url is None:
-                return Response({'error': 'Failed to generate barcode'}, 
-                              status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            # Save the barcode URL to the user record
-            user.barcode_url = barcode_url
-            user.save()
-            
-            return Response({
-                'message': 'Barcode generated successfully',
-                'barcode_url': barcode_url
-            })
-        except Exception as e:
-            return Response({'error': f'Failed to generate barcode: {str(e)}'}, 
-                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 # ------------------- ID CARD VIEW -------------------
 def id_card_view(request):
     """
@@ -328,27 +297,30 @@ def id_card_view(request):
             context['id_no'] = 'PRT-001'
             context['profile_picture'] = parent.profile_picture or 'profile.jpg'
             context['position'] = 'Parent'
+        
+        # Check if ID card exists in database, if not create it
+        try:
+            from .models import IDCard
+            # Check if ID card already exists for this user
+            id_card, created = IDCard.objects.get_or_create(user=user)
+            
+            # If it was just created or doesn't have a URL, generate one
+            if created or not id_card.id_card_url:
+                # Generate ID card using IDCardViewSet methods
+                id_card_viewset = IDCardViewSet()
+                pdf_content = id_card_viewset._generate_id_card_pdf(user)
+                url = id_card_viewset._upload_file_to_minio(user, pdf_content, user.email)
+                if url:
+                    id_card.id_card_url = url
+                    id_card.save()
+                
+            # Add ID card URL to context if available
+            if id_card.id_card_url:
+                context['id_card_url'] = id_card.id_card_url
+        except Exception:
+            # If there's any error, continue with default behavior
+            pass
 
-    return render(request, 'index.html', context)
-
-
-# ------------------- TEST ID CARD VIEW -------------------
-def test_id_card_view(request):
-    """
-    Test view for the ID card template with sample data
-    """
-    context = {
-        'name': 'John Doe',
-        'position': 'Student - Grade 10A',
-        'dob': '01/15/2008',
-        'email': 'john.doe@school.edu',
-        'phone': '+91 98765 43210',
-        'id_no': 'STU-2023-001',
-        'profile_picture': 'https://randomuser.me/api/portraits/men/41.jpg',
-        'barcode': 'barcode.png',
-        'company_name': 'Global School',
-    }
-    
     return render(request, 'index.html', context)
 
 
@@ -505,69 +477,386 @@ class IDCardViewSet(viewsets.ModelViewSet):
             secure=cfg.get('USE_SSL', True),
         )
 
-    def _object_name_for_idcard(self, idcard, fallback_email: str | None = None) -> str:
+    def _object_name_for_idcard(self, user, fallback_email: str | None = None) -> str:
         identifier = None
-        if hasattr(idcard, 'user') and idcard.user:
-            user = idcard.user
-            if hasattr(user, 'email'):
-                identifier = user.email.split('@')[0]
+        if hasattr(user, 'email'):
+            identifier = user.email.replace('@', '_').replace('.', '_')
         if not identifier and fallback_email:
-            identifier = fallback_email.split('@')[0]
+            identifier = fallback_email.replace('@', '_').replace('.', '_')
         if not identifier:
             identifier = 'unknown'
-        return f"id_cards/{identifier}.html"
+        return f"id_cards/{identifier}.pdf"
 
-    def _upload_file_to_minio(self, idcard, file, fallback_email: str | None = None):
+    def _upload_file_to_minio(self, user, pdf_content, fallback_email: str | None = None):
         client = self._minio_client()
         if client is None:
             return None
         bucket = settings.MINIO_STORAGE['BUCKET_NAME']
-        object_name = self._object_name_for_idcard(idcard, fallback_email)
-        client.put_object(bucket, object_name, file.file, file.size, content_type=getattr(file, 'content_type', 'application/octet-stream'))
+        object_name = self._object_name_for_idcard(user, fallback_email)
+        
+        # Upload PDF content directly
+        client.put_object(bucket, object_name, pdf_content, len(pdf_content.getvalue()), content_type='application/pdf')
         base = settings.BASE_BUCKET_URL
         if not base.endswith('/'):
             base += '/'
         return f"{base}{object_name}"
 
- 
+    def _generate_id_card_pdf(self, user):
+        """Generate PDF for the ID card using the theme from index.html."""
+        try:
+            # Import ReportLab modules for PDF generation
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.colors import Color
+            from reportlab.lib.utils import ImageReader
+            import requests
+            from io import BytesIO
+            
+            # Get user details based on role
+            user_name = getattr(user, 'email', 'Unknown User')
+            position = getattr(user, 'role', 'Unknown Role')
+            phone = ''
+            id_no = ''
+            profile_picture_url = ''
+            dob = ''
+            company_name = 'SCHOOL NAME'
+            
+            if hasattr(user, 'student') and user.student:
+                student = user.student
+                user_name = student.fullname
+                dob = student.date_of_birth.strftime('%m/%d/%Y') if student.date_of_birth else 'MM/DD/YEAR'
+                phone = student.phone or '+91 9876543210'
+                id_no = student.student_id or 'RST-0012'
+                profile_picture_url = student.profile_picture or 'profile.jpg'
+                if student.class_id:
+                    position = f"Student - {student.class_id.class_name} {student.class_id.sec}"
+                    
+            elif hasattr(user, 'teacher') and user.teacher:
+                teacher = user.teacher
+                user_name = teacher.fullname
+                dob = teacher.date_of_birth.strftime('%m/%d/%Y') if teacher.date_of_birth else 'MM/DD/YEAR'
+                phone = teacher.phone or '+91 9876543210'
+                id_no = teacher.teacher_id or 'RST-0012'
+                profile_picture_url = teacher.profile_picture or 'profile.jpg'
+                if teacher.department:
+                    position = f"Teacher - {teacher.department.department_name}"
+                    
+            elif hasattr(user, 'principal') and user.principal:
+                principal = user.principal
+                user_name = principal.fullname
+                dob = principal.date_of_birth.strftime('%m/%d/%Y') if principal.date_of_birth else 'MM/DD/YEAR'
+                phone = principal.phone or '+91 9876543210'
+                id_no = 'PRN-001'
+                profile_picture_url = principal.profile_picture or 'profile.jpg'
+                position = 'Principal'
+                
+            elif hasattr(user, 'management') and user.management:
+                management = user.management
+                user_name = management.fullname
+                dob = management.date_of_birth.strftime('%m/%d/%Y') if management.date_of_birth else 'MM/DD/YEAR'
+                phone = management.phone or '+91 9876543210'
+                id_no = 'MGT-001'
+                profile_picture_url = management.profile_picture or 'profile.jpg'
+                if management.designation:
+                    position = f"Management - {management.designation}"
+                    
+            elif hasattr(user, 'admin') and user.admin:
+                admin = user.admin
+                user_name = admin.fullname
+                phone = admin.phone or '+91 9876543210'
+                id_no = 'ADM-001'
+                profile_picture_url = admin.profile_picture or 'profile.jpg'
+                position = 'Admin'
+                
+            elif hasattr(user, 'parent') and user.parent:
+                parent = user.parent
+                user_name = parent.fullname
+                dob = parent.date_of_birth.strftime('%m/%d/%Y') if parent.date_of_birth else 'MM/DD/YEAR'
+                phone = parent.phone or '+91 9876543210'
+                id_no = 'PRT-001'
+                profile_picture_url = parent.profile_picture or 'profile.jpg'
+                position = 'Parent'
+
+            # Create PDF with dimensions matching the HTML template (330px width)
+            # Convert pixels to points (1 pixel = 0.75 points)
+            width_points = 330 * 0.75
+            height_points = 400 * 0.75
+            
+            # Create a BytesIO buffer for the PDF
+            pdf_buffer = BytesIO()
+            
+            # Create canvas
+            c = canvas.Canvas(pdf_buffer, pagesize=(width_points, height_points))
+            
+            # Define colors
+            background_color = Color(0.913, 0.929, 0.945)  # #e9edf1
+            header_color = Color(0.027, 0.153, 0.235)     # #07273C
+            text_color = Color(0, 0, 0)                    # #000000
+            gray_text = Color(0.467, 0.467, 0.467)        # #777777
+            light_gray = Color(0.867, 0.867, 0.867)       # #dddddd
+            
+            # Draw background
+            c.setFillColor(background_color)
+            c.rect(0, 0, width_points, height_points, fill=1)
+            
+            # Draw header area (dark blue background)
+            header_height = 120 * 0.75
+            c.setFillColor(header_color)
+            c.rect(0, height_points - header_height, width_points, header_height, fill=1)
+            
+            # Add company name in header
+            c.setFillColor(Color(1, 1, 1))  # White text
+            c.setFont("Helvetica-Bold", 15)
+            c.drawCentredString(width_points/2, height_points - 35*0.75, company_name)
+            
+            # Removed skewed header effect to eliminate empty box lines
+            
+            # Draw profile picture area (110x110px)
+            profile_size = 110 * 0.75
+            profile_x = width_points // 2 - profile_size // 2
+            profile_y = height_points - 70*0.75 - profile_size
+            
+            # Add white border around profile picture
+            border_width = 5 * 0.75
+            c.setFillColor(Color(1, 1, 1))  # White border
+            c.rect(profile_x - border_width, profile_y - border_width, 
+                   profile_size + 2*border_width, profile_size + 2*border_width, fill=1)
+            
+            # Load profile picture if available
+            if profile_picture_url and profile_picture_url.strip() and profile_picture_url != 'profile.jpg':
+                try:
+                    # Add scheme if missing
+                    if not profile_picture_url.startswith(('http://', 'https://')):
+                        profile_picture_url = 'https://' + profile_picture_url
+                    response = requests.get(profile_picture_url, timeout=10)
+                    if response.status_code == 200:
+                        profile_image_buffer = BytesIO(response.content)
+                        # Draw profile picture
+                        c.drawImage(ImageReader(profile_image_buffer), 
+                                   profile_x, profile_y, 
+                                   profile_size, profile_size)
+                except Exception as e:
+                    # If profile picture fails to load, continue without it
+                    pass
+            
+            # Add user name and position (shifted upward)
+            name_y = profile_y - 20*0.75
+            c.setFillColor(text_color)
+            c.setFont("Helvetica-Bold", 15)
+            c.drawCentredString(width_points/2, name_y, user_name)
+            
+            position_y = name_y - 22*0.75
+            c.setFillColor(gray_text)
+            c.setFont("Helvetica", 12)
+            c.drawCentredString(width_points/2, position_y, position)
+            
+            # Add info section (shifted upward)
+            info_start_y = position_y - 18*0.75
+            info_padding = 35 * 0.75
+            info_x_start = info_padding
+            info_x_end = width_points - info_padding
+            
+            # Draw info items (without email and horizontal lines)
+            c.setFont("Helvetica-Bold", 10)
+            c.setFillColor(text_color)
+            
+            info_items = [
+                ('DOB:', dob),
+                ('Phone:', phone),
+                ('ID No:', id_no)
+            ]
+            
+            current_y = info_start_y
+            for label, value in info_items:
+                # Draw label in bold
+                c.setFont("Helvetica-Bold", 10)
+                c.drawString(info_x_start, current_y, label)
+                # Draw value aligned to the right
+                c.setFont("Helvetica", 10)
+                c.drawRightString(info_x_end, current_y, value)
+                # Skip drawing horizontal lines
+                # Increased line spacing from 18*0.75 to 25*0.75 for better readability
+                current_y -= 25*0.75
+            
+            # Generate barcode
+            try:
+                # Import barcode modules if not already imported
+                import barcode
+                from barcode.writer import ImageWriter
+                
+                if barcode is not None and ImageWriter is not None:
+                    code128 = barcode.get_barcode_class('code128')
+                    barcode_instance = code128(user.email, writer=ImageWriter())
+                    
+                    # Generate the barcode image in memory without text
+                    barcode_buffer = BytesIO()
+                    barcode_instance.write(barcode_buffer, options={'write_text': False})
+                    barcode_buffer.seek(0)
+                    
+                    # Upload barcode to MinIO
+                    client = _minio_client_global()
+                    if client is not None:
+                        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
+                        object_name = f"barcodes/{user.email}.png"
+                        # Create a copy of the buffer for uploading
+                        upload_buffer = BytesIO(barcode_buffer.getvalue())
+                        client.put_object(bucket, object_name, upload_buffer, len(upload_buffer.getvalue()), content_type='image/png')
+                        # Reset original buffer position for embedding in ID card
+                        barcode_buffer.seek(0)
+                    
+                    # Add barcode to PDF if available (centered)
+                    # Move barcode upward (closer to blue header border)
+                    barcode_y = current_y - 35*0.75
+                    barcode_width = 160 * 0.75
+                    barcode_height = 45 * 0.75
+                    barcode_x = width_points // 2 - barcode_width // 2
+                    
+                    # Draw barcode image
+                    c.drawImage(ImageReader(barcode_buffer), 
+                               barcode_x, barcode_y, 
+                               barcode_width, barcode_height)
+            except Exception as e:
+                # If barcode generation fails, continue without it
+                pass
+            
+            # Draw footer
+            footer_height = 45 * 0.75
+            footer_y = 0
+            c.setFillColor(header_color)
+            c.rect(0, footer_y, width_points, footer_height, fill=1)
+            
+            # Removed footer skewed effect to eliminate empty box lines
+            
+            # Save the PDF
+            c.save()
+            pdf_buffer.seek(0)
+            
+            return pdf_buffer
+        except Exception as e:
+            # If anything fails, return a simple placeholder PDF
+            try:
+                from reportlab.pdfgen import canvas
+                from io import BytesIO
+                
+                width_points = 330 * 0.75
+                height_points = 400 * 0.75
+                
+                pdf_buffer = BytesIO()
+                c = canvas.Canvas(pdf_buffer, pagesize=(width_points, height_points))
+                
+                # Draw background
+                c.setFillColor(Color(0.913, 0.929, 0.945))
+                c.rect(0, 0, width_points, height_points, fill=1)
+                
+                # Add error message
+                c.setFillColor(Color(0, 0, 0))
+                c.setFont("Helvetica", 12)
+                c.drawCentredString(width_points/2, height_points/2, 'ID Card Generation Failed')
+                
+                c.save()
+                pdf_buffer.seek(0)
+                
+                return pdf_buffer
+            except Exception:
+                # If even the fallback fails, return a minimal PDF
+                from reportlab.pdfgen import canvas
+                from io import BytesIO
+                
+                width_points = 330 * 0.75
+                height_points = 400 * 0.75
+                
+                pdf_buffer = BytesIO()
+                c = canvas.Canvas(pdf_buffer, pagesize=(width_points, height_points))
+                c.save()
+                pdf_buffer.seek(0)
+                
+                return pdf_buffer
+
+    @action(detail=False, methods=['get'])
+    def check_by_email(self, request):
+        """Check if ID card exists for user by email."""
+        email = request.query_params.get('email')
+        if not email:
+            return Response({'error': 'Email parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+        # Check if ID card exists
+        try:
+            id_card = IDCard.objects.get(user=user)
+            serializer = self.get_serializer(id_card)
+            return Response(serializer.data)
+        except IDCard.DoesNotExist:
+            return Response({'exists': False, 'message': 'ID card not found for this user'})
+    
+    @action(detail=False, methods=['post'])
+    def generate_id_card(self, request):
+        """Generate ID card for user: check if exists, if not create it."""
+        email = request.data.get('email')
+        if not email:
+            return Response({'error': 'Email required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+        # Check if ID card already exists
+        id_card, created = IDCard.objects.get_or_create(user=user)
+        
+        if not created and id_card.id_card_url:
+            # ID card already exists with URL, return it
+            serializer = self.get_serializer(id_card)
+            return Response(serializer.data)
+            
+        # Generate PDF content for ID card
+        pdf_content = self._generate_id_card_pdf(user)
+        
+        # Upload to MinIO
+        url = self._upload_file_to_minio(user, pdf_content, email)
+        if url is None:
+            return Response({'error': 'Failed to upload ID card to storage'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        # Save URL to database
+        id_card.id_card_url = url
+        id_card.save()
+        
+        serializer = self.get_serializer(id_card)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
 def _generate_barcode_for_user(user):
-    """Generate a barcode for a user and upload it to MinIO."""
+    """Generate a barcode for a user and return the MinIO URL without uploading."""
     # Check if barcode library is available
     if barcode is None or ImageWriter is None:
-        return None
+        raise Exception('Barcode generation library not installed. Please install python-barcode.')
     
     try:
         # Create a Code128 barcode using the user's email as the data
         code128 = barcode.get_barcode_class('code128')
+        if code128 is None:
+            raise Exception('Failed to get barcode class')
         barcode_instance = code128(user.email, writer=ImageWriter())
         
-        # Generate the barcode image in memory
+        # Generate the barcode image in memory without text
         from io import BytesIO
         buffer = BytesIO()
-        barcode_instance.write(buffer)
+        # Write the barcode without text
+        barcode_instance.write(buffer, options={'write_text': False})
         buffer.seek(0)
         
-        # Create a temporary file to upload to MinIO
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
-            tmp_file.write(buffer.getvalue())
-            tmp_file_path = tmp_file.name
-        
-        # Create a Django file-like object
-        from django.core.files.base import File
-        barcode_file = File(open(tmp_file_path, 'rb'))
-        barcode_file.name = f"barcodes/{user.email}.png"
-        
-        # Upload to MinIO
-        url = _upload_file_to_minio_global(user, barcode_file)
-        
-        # Clean up temporary file
-        os.unlink(tmp_file_path)
-        barcode_file.close()
+        # Return the MinIO URL without uploading (ID card generation will handle the upload)
+        base = settings.BASE_BUCKET_URL
+        if not base.endswith('/'):
+            base += '/'
+        url = f"{base}barcodes/{user.email}.png"
         
         return url
-    except Exception:
-        # If barcode generation fails, return None
-        return None
+    except Exception as e:
+        # Re-raise the exception with more details
+        raise Exception(f'Failed to generate barcode: {str(e)}')
 
 
 def _object_name_for_barcode_global(user) -> str:

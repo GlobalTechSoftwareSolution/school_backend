@@ -185,7 +185,6 @@ class Command(BaseCommand):
                         'qualification': random.choice(['B.Ed', 'M.Ed', 'PhD']),
                         'experience_years': Decimal(random.randint(2, 15)),
                         'profile_picture': 'https://example.com/profile.jpg',
-                        'barcode_url': f'https://example.com/teacher_{i+1}_barcode.png',
                         'residential_address': f'{i+1} Teacher Street, City',
                         'emergency_contact_name': f'Emergency Contact {i+1}',
                         'emergency_contact_relationship': 'Spouse',
@@ -228,7 +227,6 @@ class Command(BaseCommand):
                         'total_experience': Decimal('20.0'),
                         'bio': 'Experienced educational leader',
                         'profile_picture': 'https://example.com/profile.jpg',
-                        'barcode_url': 'https://example.com/principal_barcode.png',
                         'office_address': 'Principal Office, School Building',
                     }
                 )
@@ -249,7 +247,6 @@ class Command(BaseCommand):
                         'date_joined': timezone.now().astimezone(IST).date() - timedelta(days=365*3),
                         'department': random.choice(departments) if departments else None,
                         'profile_picture': 'https://example.com/profile.jpg',
-                        'barcode_url': 'https://example.com/management_barcode.png',
                         'office_address': 'Management Office, School Building',
                     }
                 )
@@ -267,7 +264,6 @@ class Command(BaseCommand):
                         'phone': '+1234567892',
                         'office_address': 'Admin Office, School Building',
                         'profile_picture': 'https://example.com/profile.jpg',
-                        'barcode_url': 'https://example.com/admin_barcode.png',
                     }
                 )
             except Exception as e:
