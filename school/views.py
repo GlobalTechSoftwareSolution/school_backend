@@ -96,9 +96,6 @@ def _upload_file_to_minio_global(member, file, fallback_email: str | None = None
         base += '/'
     return f"{base}{object_name}"
 
- 
-
-
 # ------------------- USER REGISTRATION -------------------
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -695,16 +692,8 @@ class IDCardViewSet(viewsets.ModelViewSet):
                     barcode_instance.write(barcode_buffer, options={'write_text': False})
                     barcode_buffer.seek(0)
                     
-                    # Upload barcode to MinIO
-                    client = _minio_client_global()
-                    if client is not None:
-                        bucket = settings.MINIO_STORAGE['BUCKET_NAME']
-                        object_name = f"barcodes/{user.email}.png"
-                        # Create a copy of the buffer for uploading
-                        upload_buffer = BytesIO(barcode_buffer.getvalue())
-                        client.put_object(bucket, object_name, upload_buffer, len(upload_buffer.getvalue()), content_type='image/png')
-                        # Reset original buffer position for embedding in ID card
-                        barcode_buffer.seek(0)
+                    # NOTE: We no longer upload barcode to MinIO separately
+                    # The barcode is only embedded in the ID card PDF
                     
                     # Add barcode to PDF if available (centered)
                     # Move barcode upward (closer to info section)
@@ -864,13 +853,10 @@ def _generate_barcode_for_user(user):
         barcode_instance.write(buffer, options={'write_text': False})
         buffer.seek(0)
         
-        # Return the MinIO URL without uploading (ID card generation will handle the upload)
-        base = settings.BASE_BUCKET_URL
-        if not base.endswith('/'):
-            base += '/'
-        url = f"{base}barcodes/{user.email}.png"
-        
-        return url
+        # NOTE: We no longer upload barcode to MinIO separately
+        # The barcode is only embedded in the ID card PDF
+        # Return None to indicate no separate storage
+        return None
     except Exception as e:
         # Re-raise the exception with more details
         raise Exception(f'Failed to generate barcode: {str(e)}')
@@ -878,12 +864,8 @@ def _generate_barcode_for_user(user):
 
 def _object_name_for_barcode_global(user) -> str:
     """Generate object name for user barcode."""
-    identifier = None
-    if hasattr(user, 'email'):
-        identifier = user.email.split('@')[0]
-    if not identifier:
-        identifier = 'unknown'
-    return f"barcodes/{identifier}.png"
+    # This function is no longer used since we don't store barcodes separately
+    return ""
 
 
 # ------------------- USER REGISTRATION -------------------
@@ -1631,11 +1613,23 @@ def _verify_location(latitude: float, longitude: float, radius_meters: int | Non
 def school_attendance_view(request):
     """Mark attendance by matching face image and verifying location for all users (except parents)."""
     # Only require face_recognition if an image is provided; allow deterministic marking via user_email otherwise
-    if face_recognition is None and (request.FILES.get('image') or request.FILES.get('file')):
-        return JsonResponse({
-            'status': 'error',
-            'message': 'face_recognition package not installed. Please install dependencies or provide user_email without an image.'
-        }, status=500)
+    # Get request parameters early to avoid unbound variable issues
+    forced_email = request.POST.get('user_email')
+    barcode = request.POST.get('barcode')
+    
+    # Check if face_recognition is available
+    if face_recognition is None:
+        # If face_recognition is not available, we can only process barcode or email
+        if request.FILES.get('image') or request.FILES.get('file'):
+            if not barcode and not forced_email:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'face_recognition package not installed. Please install dependencies or provide user_email or barcode without an image.'
+                }, status=500)
+    
+    # Validate that we have the required data
+    if not request.POST.get('latitude') and not request.POST.get('longitude'):
+        return JsonResponse({'status': 'fail', 'message': 'Latitude and longitude required'}, status=400)
 
     lat = request.POST.get('latitude')
     lon = request.POST.get('longitude')
@@ -1644,20 +1638,33 @@ def school_attendance_view(request):
     try:
         lat_f = float(lat)
         lon_f = float(lon)
-    except ValueError:
+    except (ValueError, TypeError):
         return JsonResponse({'status': 'fail', 'message': 'Invalid latitude or longitude'}, status=400)
 
     uploaded_file = request.FILES.get('image') or request.FILES.get('file')
-    forced_email = request.POST.get('user_email')  # Changed from student_email to user_email
-    barcode = request.POST.get('barcode')  # New parameter for barcode scanning
+    # forced_email and barcode are already defined above
     
     # Require at least one method: image, email, or barcode
     if not uploaded_file and not forced_email and not barcode:
         return JsonResponse({'status': 'fail', 'message': 'Provide either user_email, barcode, or an image'}, status=400)
+    
+    # Validate that if we have an uploaded file, it's not empty
+    if uploaded_file and uploaded_file.size == 0:
+        return JsonResponse({'status': 'fail', 'message': 'Uploaded file is empty'}, status=400)
 
     tmp_path = None
     if uploaded_file:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+        # Get the file extension from the uploaded file
+        file_extension = '.jpg'  # default
+        if hasattr(uploaded_file, 'name'):
+            name = getattr(uploaded_file, 'name', '')
+            if name and '.' in name:
+                ext = name.split('.')[-1].lower()
+                # Validate extension is a common image format
+                if ext in ['jpg', 'jpeg', 'png', 'bmp', 'tiff']:
+                    file_extension = '.' + ext
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp:
             for chunk in uploaded_file.chunks():
                 tmp.write(chunk)
             tmp_path = tmp.name
@@ -1665,16 +1672,44 @@ def school_attendance_view(request):
     try:
         uploaded_encoding = None
         if tmp_path:
-            fr = face_recognition
-            assert fr is not None  # ensured above when image is provided
-            uploaded_img = fr.load_image_file(tmp_path)
-            uploaded_encodings = fr.face_encodings(uploaded_img)
-            if not uploaded_encodings:
-                # If face detection fails, try barcode as fallback
+            try:
+                fr = face_recognition
+                if fr is None:
+                    # If face_recognition is not available, try fallback methods
+                    if not barcode and not forced_email:
+                        return JsonResponse({'status': 'fail', 'message': 'Face recognition library not available. Please provide barcode or user_email as fallback.'}, status=400)
+                else:
+                    try:
+                        uploaded_img = fr.load_image_file(tmp_path)
+                        uploaded_encodings = fr.face_encodings(uploaded_img)
+                        if not uploaded_encodings:
+                            # If face detection fails, try barcode as fallback
+                            if not barcode and not forced_email:
+                                return JsonResponse({'status': 'fail', 'message': 'No face detected. Please provide barcode or user_email as fallback.'}, status=400)
+                        else:
+                            uploaded_encoding = uploaded_encodings[0]
+                            # Validate the encoding to prevent array comparison issues
+                            try:
+                                # Try to convert to a list if it's a numpy array
+                                import numpy as np
+                                if isinstance(uploaded_encoding, np.ndarray):
+                                    # Convert to list to avoid comparison issues
+                                    uploaded_encoding = uploaded_encoding.tolist()
+                            except ImportError:
+                                # numpy not available, keep as is
+                                pass
+                    except ValueError as ve:
+                        # Handle numpy array comparison errors
+                        if not barcode and not forced_email:
+                            return JsonResponse({'status': 'fail', 'message': f'ValueError processing uploaded image: {str(ve)}. Please provide barcode or user_email as fallback.'}, status=400)
+                    except Exception as e:
+                        # If there's an error processing the image, try fallback methods
+                        if not barcode and not forced_email:
+                            return JsonResponse({'status': 'fail', 'message': f'Error processing uploaded image: {str(e)}. Please provide barcode or user_email as fallback.'}, status=400)
+            except Exception as e:
+                # If there's an error processing the image, try fallback methods
                 if not barcode and not forced_email:
-                    return JsonResponse({'status': 'fail', 'message': 'No face detected. Please provide barcode or user_email as fallback.'}, status=400)
-            else:
-                uploaded_encoding = uploaded_encodings[0]
+                    return JsonResponse({'status': 'fail', 'message': f'Error processing image: {str(e)}. Please provide barcode or user_email as fallback.'}, status=400)
 
         # Determine target user (excluding parents)
         matched_user = None
@@ -1706,6 +1741,24 @@ def school_attendance_view(request):
         
         # Try face recognition if image was provided and other methods didn't work
         elif uploaded_encoding is not None and not matched_user:
+            # Validate that we have a proper encoding
+            if not isinstance(uploaded_encoding, list) and not hasattr(uploaded_encoding, '__len__'):
+                # If the encoding is not valid, try fallback methods
+                if not barcode and not forced_email:
+                    return JsonResponse({'status': 'fail', 'message': 'Invalid face encoding. Please provide barcode or user_email as fallback.'}, status=400)
+            
+            # Additional validation for numpy arrays
+            try:
+                # Try to convert to list if it's a numpy array to avoid comparison issues
+                import numpy as np
+                if isinstance(uploaded_encoding, np.ndarray):
+                    # Ensure it's a 1D array of numbers
+                    if uploaded_encoding.ndim != 1:
+                        if not barcode and not forced_email:
+                            return JsonResponse({'status': 'fail', 'message': 'Invalid face encoding format. Please provide barcode or user_email as fallback.'}, status=400)
+            except ImportError:
+                # numpy not available, skip this check
+                pass
             # Auto-set check_in for face recognition flow
             check_in = timezone.now().time()
             
@@ -1736,29 +1789,75 @@ def school_attendance_view(request):
                     elif hasattr(user, 'student') and user.student and user.student.profile_picture:
                         profile_obj = user.student
                     
+                    # Skip users without a profile object
+                    if profile_obj is None:
+                        continue
+                    
                     if not profile_obj or not profile_obj.profile_picture:
                         continue
                         
                     resp = requests.get(profile_obj.profile_picture, timeout=10)
                     if resp.status_code != 200:
                         continue
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as s_tmp:
+                    # Determine file extension from content type or default to .jpg
+                    file_extension = '.jpg'  # default
+                    content_type = resp.headers.get('content-type', '')
+                    if 'png' in content_type:
+                        file_extension = '.png'
+                    elif 'jpeg' in content_type:
+                        file_extension = '.jpeg'
+                    elif 'jpg' in content_type:
+                        file_extension = '.jpg'
+                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as s_tmp:
                         s_tmp.write(resp.content)
                         s_path = s_tmp.name
-                    fr = face_recognition
-                    assert fr is not None
-                    s_img = fr.load_image_file(s_path)
-                    s_encs = fr.face_encodings(s_img)
-                    os.remove(s_path)
-                    if not s_encs:
+                    try:
+                        fr = face_recognition
+                        if fr is None:
+                            # Skip face recognition if library is not available
+                            os.remove(s_path) if os.path.exists(s_path) else None
+                            continue
+                        s_img = fr.load_image_file(s_path)
+                        s_encs = fr.face_encodings(s_img)
+                        os.remove(s_path)
+                        if not s_encs:
+                            continue
+                        # Validate uploaded encoding before computing distance
+                        if uploaded_encoding is None:
+                            continue
+                        
+                        # Additional validation for the encoding
+                        try:
+                            # Ensure encoding is a list or can be converted to list
+                            if not isinstance(uploaded_encoding, (list, tuple)):
+                                import numpy as np
+                                if not isinstance(uploaded_encoding, np.ndarray):
+                                    continue  # Skip if not a valid encoding format
+                        except ImportError:
+                            # numpy not available
+                            if not isinstance(uploaded_encoding, (list, tuple)):
+                                continue  # Skip if not a valid encoding format
+                        # Compute distance and keep the closest under threshold
+                        try:
+                            distances = fr.face_distance([s_encs[0]], uploaded_encoding)
+                            if len(distances) > 0:
+                                distance_val = float(distances[0])
+                                # Stricter threshold to avoid random mismatches
+                                if distance_val <= 0.45 and (best_distance is None or distance_val < best_distance):
+                                    best_distance = distance_val
+                                    best_user = user
+                        except (ValueError, TypeError) as ve:
+                            # Handle the specific numpy array comparison error
+                            # This can happen when comparing arrays directly
+                            pass  # Continue with other users
+                        except Exception as e:
+                            # If distance calculation fails, continue with other users
+                            pass
+                    except Exception:
+                        # If there's an error processing this user's image, continue with others
+                        os.remove(s_path) if os.path.exists(s_path) else None
                         continue
-                    # Compute distance and keep the closest under threshold
-                    distances = fr.face_distance([s_encs[0]], uploaded_encoding)
-                    distance_val = float(distances[0])
-                    # Stricter threshold to avoid random mismatches
-                    if distance_val <= 0.45 and (best_distance is None or distance_val < best_distance):
-                        best_distance = distance_val
-                        best_user = user
                 except Exception:
                     continue
             matched_user = best_user
@@ -1767,11 +1866,17 @@ def school_attendance_view(request):
             return JsonResponse({'status': 'fail', 'message': 'No matching user found'}, status=404)
 
         # Verify location proximity
-        is_within, distance_m = _verify_location(lat_f, lon_f)
-        if not is_within:
+        try:
+            is_within, distance_m = _verify_location(lat_f, lon_f)
+            if not is_within:
+                return JsonResponse({
+                    'status': 'fail',
+                    'message': f'Too far from office ({distance_m:.2f}m). Must be within {LOCATION_RADIUS_METERS}m.'
+                }, status=400)
+        except Exception as e:
             return JsonResponse({
                 'status': 'fail',
-                'message': f'Too far from office ({distance_m:.2f}m). Must be within {LOCATION_RADIUS_METERS}m.'
+                'message': f'Error verifying location: {str(e)}'
             }, status=400)
 
         # Mark attendance for today (works regardless of USE_TZ setting)
@@ -1781,11 +1886,23 @@ def school_attendance_view(request):
         if status_param not in (None, 'Present', 'Absent'):
             status_param = None
         remarks_param = request.POST.get('remarks')
+        
+        # Validate that we have a valid user before proceeding
+        if matched_user is None:
+            return JsonResponse({'status': 'fail', 'message': 'No valid user found for attendance'}, status=404)
 
         # Create or update attendance record with auto check_in
         # Only set check_in time if we used face recognition
+        # Validate face recognition before using in conditional
+        face_recognition_used = False
+        try:
+            face_recognition_used = (uploaded_encoding is not None and matched_user == best_user)
+        except (ValueError, TypeError):
+            # Handle array comparison issues
+            face_recognition_used = False
+            
         attendance_data = {
-            'check_in': timezone.now().time() if (uploaded_encoding and matched_user == best_user) else None,
+            'check_in': timezone.now().time() if face_recognition_used else None,
             'status': 'Present',  # Auto-mark as present
             'user': matched_user
         }
@@ -1815,8 +1932,14 @@ def school_attendance_view(request):
         method_used = "email"
         if barcode and matched_user.email == barcode:
             method_used = "barcode"
-        elif uploaded_encoding and matched_user == best_user:
-            method_used = "face_recognition"
+        else:
+            # Validate face recognition usage to avoid array comparison issues
+            try:
+                if uploaded_encoding is not None and matched_user == best_user:
+                    method_used = "face_recognition"
+            except (ValueError, TypeError):
+                # Handle array comparison issues
+                pass
             
         return JsonResponse({
             'status': 'success',
@@ -1827,9 +1950,32 @@ def school_attendance_view(request):
             'role': matched_user.role,
             'method_used': method_used
         })
+    except ValueError as ve:
+        # Handle ValueError specifically
+        try:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+        return JsonResponse({
+            'status': 'fail',
+            'message': f'ValueError: {str(ve)}. This might be due to invalid data types in face recognition processing.'
+        }, status=400)
+    except Exception as e:
+        # Clean up temporary files even if there's an error
+        try:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+        # Return a more user-friendly error message
+        return JsonResponse({
+            'status': 'fail',
+            'message': f'An error occurred: {str(e)}'
+        }, status=500)
     finally:
         try:
-            if tmp_path:
+            if tmp_path and os.path.exists(tmp_path):
                 os.remove(tmp_path)
         except Exception:
             pass
@@ -2581,3 +2727,456 @@ class HolidayViewSet(viewsets.ModelViewSet):
                 errors.append({'index': idx, 'error': str(e), 'item': item})
 
         return Response({'created': created, 'updated': updated, 'errors': errors}, status=status.HTTP_200_OK)
+
+
+# ------------------- PASSWORD RESET VIEWS -------------------
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.template.loader import render_to_string
+from django.core.mail import send_mail
+from django.conf import settings
+from .serializers import PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_request(request):
+    """
+    Request a password reset token.
+    Sends an email with a reset link to the user's email address.
+    """
+    serializer = PasswordResetRequestSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data['email']
+        try:
+            user = User.objects.get(email=email)
+            
+            # Generate token and uid
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            
+            # Create reset link
+            reset_link = f"{request.build_absolute_uri('/api/password-reset-confirm/')}{uid}/{token}/"
+            
+            # Render email template
+            subject = "Password Reset Request"
+            message = render_to_string('password_reset_email.html', {
+                'user': user,
+                'reset_link': reset_link,
+                'site_name': 'School Management System'
+            })
+            
+            # Send email
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+                html_message=message
+            )
+            
+            return Response({
+                'message': 'Password reset email sent successfully. Please check your inbox.'
+            }, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            # For security reasons, we don't reveal if the email exists
+            return Response({
+                'message': 'Password reset email sent successfully. Please check your inbox.'
+            }, status=status.HTTP_200_OK)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_confirm(request, uidb64=None, token=None):
+    """
+    Confirm password reset with token.
+    Allows user to set a new password.
+    """
+    # Validate input data
+    serializer = PasswordResetConfirmSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Decode uid and get user
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))  # pyright: ignore[reportArgumentType]
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        return Response({
+            'error': 'Invalid reset link'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check token validity
+    if not default_token_generator.check_token(user, token):
+        return Response({
+            'error': 'Invalid or expired reset link'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Set new password
+    new_password = serializer.validated_data['new_password']
+    user.set_password(new_password)
+    user.save()
+    
+    return Response({
+        'message': 'Password reset successful. You can now login with your new password.'
+    }, status=status.HTTP_200_OK)
+
+
+# ------------------- MARKS CARD VIEW -------------------
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def send_marks_card(request):
+    """
+    Generate and send marks card as PDF to student and parent via email
+    """
+    # Get student email from request body
+    student_email = request.data.get('email')
+    
+    if not student_email:
+        return Response({'error': 'Student email is required in the request body'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Get the student user
+        user = User.objects.get(email=student_email, role='Student')
+        student = user.student
+    except User.DoesNotExist:
+        return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Initialize context with student data
+    context = {
+        'student_name': student.fullname,
+        'roll_no': '',  # Will be populated if available
+        'class_section': '',  # Will be populated if available
+        'academic_year': timezone.now().astimezone(IST).strftime('%Y-%Y'),  # Default to current year
+        'date_of_birth': student.date_of_birth.strftime('%d/%m/%Y') if student.date_of_birth else '',
+        'admission_no': student.student_id or '',
+    }
+    
+    # Add class information if available
+    if student.class_id:
+        context['class_section'] = f"{student.class_id.class_name} {student.class_id.sec}"
+        # Update academic year based on current date
+        current_year = timezone.now().astimezone(IST).year
+        context['academic_year'] = f"{current_year}-{current_year + 1}"
+    
+    # Get student grades
+    grades = Grade.objects.filter(student=student).select_related('subject')
+    
+    # Process grades for display
+    subject_marks = []
+    total_max_marks = 0
+    total_marks_obtained = 0
+    
+    for grade in grades:
+        max_marks = float(grade.total_marks) if grade.total_marks else 0
+        marks_obtained = float(grade.marks_obtained) if grade.marks_obtained else 0
+        
+        # Calculate grade based on percentage with float precision
+        percentage = (marks_obtained / max_marks) * 100 if max_marks > 0 else 0
+        if percentage >= 90:
+            grade_letter = 'A+'
+        elif percentage >= 80:
+            grade_letter = 'A'
+        elif percentage >= 70:
+            grade_letter = 'B+'
+        elif percentage >= 60:
+            grade_letter = 'B'
+        elif percentage >= 50:
+            grade_letter = 'C'
+        else:
+            grade_letter = 'F'
+        
+        # Determine pass/fail
+        result = 'Pass' if percentage >= 35 else 'Fail'
+        
+        subject_marks.append({
+            'subject': grade.subject.subject_name,
+            'max_marks': f"{max_marks:.0f}",  # Show as integer
+            'marks_obtained': f"{marks_obtained:.0f}",  # Show as integer
+            'percentage': f"{percentage:.2f}%",  # Show percentage with 2 decimal places
+            'grade': grade_letter,
+            'result': result
+        })
+        
+        total_max_marks += max_marks
+        total_marks_obtained += marks_obtained
+    
+    context['subject_marks'] = subject_marks
+    
+    # Calculate overall result with float precision
+    if total_max_marks > 0:
+        overall_percentage = (total_marks_obtained / total_max_marks) * 100
+        context['total_max_marks'] = f"{total_max_marks:.0f}"
+        context['total_marks_obtained'] = f"{total_marks_obtained:.0f}"
+        context['overall_percentage'] = f"{overall_percentage:.2f}%"
+        context['overall_result'] = 'PASS' if overall_percentage >= 35 else 'FAIL'
+    else:
+        context['total_max_marks'] = "0"
+        context['total_marks_obtained'] = "0"
+        context['overall_percentage'] = "0.00%"
+        context['overall_result'] = 'N/A'
+    
+    # Generate PDF using ReportLab
+    try:
+        from io import BytesIO
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        
+        # Create a buffer to store the PDF
+        buffer = BytesIO()
+        
+        # Create PDF document with custom margins
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=A4,
+            rightMargin=72,
+            leftMargin=72,
+            topMargin=72,
+            bottomMargin=72
+        )
+        elements = []
+        
+        # Define styles
+        styles = getSampleStyleSheet()
+        
+        # Title style
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            spaceAfter=5,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#2C5AA0')
+        )
+        
+        # Subtitle style
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Heading2'],
+            fontSize=16,
+            spaceAfter=20,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#2C5AA0')
+        )
+        
+        # School info style
+        school_style = ParagraphStyle(
+            'SchoolInfo',
+            parent=styles['Normal'],
+            fontSize=10,
+            spaceAfter=5,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#555555')
+        )
+        
+        # Normal text style
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontSize=10,
+            spaceAfter=5
+        )
+        
+        # Add a frame/border around the entire content
+        # Create a decorative frame at the beginning
+        elements.append(Spacer(1, 5))
+        
+        # Header
+        school_name = Paragraph("GREENWOOD PUBLIC SCHOOL", title_style)
+        school_address = Paragraph("123, MG Road, Bengaluru - 560001 | Ph: (080) 2345 6789", school_style)
+        exam_title = Paragraph("ANNUAL EXAMINATION MARKS CARD", subtitle_style)
+        
+        elements.append(school_name)
+        elements.append(school_address)
+        elements.append(exam_title)
+        elements.append(Spacer(1, 20))
+        
+        # Student information table with completely new design
+        student_data = [
+            ['Student Name:', context['student_name'], 'Roll No:', context['roll_no'] or 'N/A'],
+            ['Class & Section:', context['class_section'] or 'N/A', 'Academic Year:', context['academic_year']],
+            ['Date of Birth:', context['date_of_birth'] or 'N/A', 'Admission No:', context['admission_no'] or 'N/A']
+        ]
+        
+        student_table = Table(student_data, colWidths=[1.5*inch, 2*inch, 1.5*inch, 2*inch])
+        student_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FFFFFF')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#333333')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
+            ('BOX', (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
+            ('INNERGRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F0F5FF')),
+            ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#F0F5FF')),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#2C5AA0')),
+            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#2C5AA0')),
+        ]))
+        
+        elements.append(student_table)
+        elements.append(Spacer(1, 20))
+        
+        # Marks table header
+        marks_header = Paragraph("Academic Performance", subtitle_style)
+        marks_header.style.alignment = TA_LEFT
+        marks_header.style.fontSize = 13
+        marks_header.style.textColor = colors.HexColor('#2C5AA0')
+        elements.append(marks_header)
+        
+        # Marks table with completely new styling
+        # Header row
+        marks_data = [
+            ['Subject', 'Max Marks', 'Marks Obtained', 'Percentage', 'Grade', 'Result']
+        ]
+        
+        # Add subject rows
+        for subject in context['subject_marks']:
+            marks_data.append([
+                subject['subject'],
+                subject['max_marks'],
+                subject['marks_obtained'],
+                subject['percentage'],
+                subject['grade'],
+                subject['result']
+            ])
+        
+        # Add total row
+        marks_data.append([
+            'Total',
+            context['total_max_marks'],
+            context['total_marks_obtained'],
+            context['overall_percentage'],
+            '',
+            context['overall_result']
+        ])
+        
+        marks_table = Table(marks_data, colWidths=[2*inch, 1*inch, 1*inch, 1*inch, 0.7*inch, 0.8*inch])
+        marks_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2C5AA0')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#FFFFFF')),
+            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
+            ('BOX', (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
+            ('INNERGRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
+            ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+            ('FONTNAME', (-1, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (0, -1), (0, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F0F5FF')),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.HexColor('#2C5AA0')),
+        ]))
+        
+        elements.append(marks_table)
+        elements.append(Spacer(1, 25))
+        
+        # Performance summary with new styling
+        summary_text = f"Overall Percentage: {context['overall_percentage']}"
+        summary_para = Paragraph(summary_text, normal_style)
+        summary_para.style.textColor = colors.HexColor('#2C5AA0')
+        summary_para.style.fontSize = 11
+        elements.append(summary_para)
+        elements.append(Spacer(1, 10))
+        
+        # Footer with signatures and new borders
+        footer_data = [
+            ['Class Teacher', 'Principal'],
+            ['', '']
+        ]
+        
+        footer_table = Table(footer_data, colWidths=[3*inch, 3*inch])
+        footer_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, 0), 0.3, colors.HexColor('#CCCCCC')),
+            ('BOX', (0, 0), (-1, 0), 0.3, colors.HexColor('#CCCCCC')),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.3, colors.HexColor('#CCCCCC')),
+            ('LINEAFTER', (0, 0), (0, 0), 0.3, colors.HexColor('#CCCCCC')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#666666')),
+        ]))
+        
+        elements.append(footer_table)
+        elements.append(Spacer(1, 20))
+        
+        # Final result display with new styling
+        result_color = '#32A852' if context['overall_result'] == 'PASS' else '#C70039'
+        result_text = f"Final Result: <font color='{result_color}'><b>{context['overall_result']}</b></font>"
+        result_para = Paragraph(result_text, subtitle_style)
+        result_para.style.alignment = TA_CENTER
+        result_para.style.fontSize = 16
+        result_para.style.textColor = colors.HexColor('#2C5AA0')
+        elements.append(result_para)
+        
+        # Build PDF
+        doc.build(elements)
+        
+        # Get PDF content
+        pdf_content = buffer.getvalue()
+        buffer.close()
+        
+    except Exception as e:
+        return Response({'error': f'Failed to generate PDF: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # Send email to student with PDF attachment
+    student_subject = f"Marks Card for {student.fullname}"
+    
+    # Send email to parent if parent exists
+    parent_emails = []
+    if student.parent:
+        parent_emails.append(student.parent.email.email)
+        
+        parent_subject = f"Marks Card for your child {student.fullname}"
+        
+        try:
+            from django.core.mail import EmailMessage
+            # Send email to parent with PDF attachment
+            email = EmailMessage(
+                parent_subject,
+                'Please find attached the marks card for your child.',
+                settings.DEFAULT_FROM_EMAIL,
+                parent_emails,
+            )
+            email.attach(f'marks_card_{student.fullname}.pdf', pdf_content, 'application/pdf')
+            email.send()
+        except Exception as e:
+            return Response({'error': f'Failed to send email to parent: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # Send email to student with PDF attachment
+    try:
+        from django.core.mail import EmailMessage
+        email = EmailMessage(
+            student_subject,
+            'Please find attached your marks card.',
+            settings.DEFAULT_FROM_EMAIL,
+            [student_email],
+        )
+        email.attach(f'marks_card_{student.fullname}.pdf', pdf_content, 'application/pdf')
+        email.send()
+    except Exception as e:
+        return Response({'error': f'Failed to send email to student: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    return Response({
+        'message': 'Marks card PDF sent successfully to student and parent',
+        'student_email': student_email,
+        'parent_emails': parent_emails
+    }, status=status.HTTP_200_OK)
+

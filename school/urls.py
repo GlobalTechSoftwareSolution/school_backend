@@ -10,6 +10,8 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('check_token/', views.current_user, name='current-user'),
     path('login/', views.login_with_credentials, name='login'),
+    path('password_reset/', views.password_reset_request, name='password-reset-request'),
+    path('password_reset_confirm/<uidb64>/<token>/', views.password_reset_confirm, name='password-reset-confirm'),
     
     # ID Card
     path('id_card/', views.id_card_view, name='id-card'),
@@ -170,4 +172,7 @@ urlpatterns = [
     path('id_cards/<int:pk>/', views.IDCardViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='id-card-detail'),
     path('id_cards/check_by_email/', views.IDCardViewSet.as_view({'get': 'check_by_email'}), name='id-card-check-by-email'),
     path('id_cards/generate/', views.IDCardViewSet.as_view({'post': 'generate_id_card'}), name='id-card-generate'),
+    
+    # Marks Card
+    path('marks_card/', views.send_marks_card, name='send-marks-card'),
 ]

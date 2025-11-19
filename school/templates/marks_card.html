@@ -3,172 +3,366 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>School Marks Card</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+<title>Marks Card</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
-  *{margin:0;padding:0;box-sizing:border-box;font-family:'Poppins',sans-serif;}
-  body{
-    background:#f3f5f9;
-    display:flex;justify-content:center;align-items:center;
-    padding:40px;
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Roboto', sans-serif;
   }
-  .marks-card{
-    width:800px;
-    background:#fff;
-    border:2px solid #1e3c72;
-    border-radius:10px;
-    box-shadow:0 8px 25px rgba(0,0,0,0.1);
-    padding:30px 50px;
+  
+  body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 30px;
+    position: relative;
   }
-
+  
+  /* Complete page border */
+  .page-border {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    bottom: 20px;
+    border: 2px solid #2C5AA0;
+    border-radius: 15px;
+    pointer-events: none;
+    z-index: -1;
+    box-shadow: 0 0 15px rgba(44, 90, 160, 0.2);
+  }
+  
+  /* Corner decorations for the page border */
+  .page-border::before,
+  .page-border::after {
+    content: "";
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border: 2px solid #2C5AA0;
+  }
+  
+  .page-border::before {
+    top: -2px;
+    left: -2px;
+    border-right: none;
+    border-bottom: none;
+  }
+  
+  .page-border::after {
+    top: -2px;
+    right: -2px;
+    border-left: none;
+    border-bottom: none;
+  }
+  
+  .page-border .corner-bottom-left,
+  .page-border .corner-bottom-right {
+    content: "";
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border: 2px solid #2C5AA0;
+  }
+  
+  .corner-bottom-left {
+    bottom: -2px;
+    left: -2px;
+    border-right: none;
+    border-top: none;
+  }
+  
+  .corner-bottom-right {
+    bottom: -2px;
+    right: -2px;
+    border-left: none;
+    border-top: none;
+  }
+  
+  .marks-card {
+    width: 750px;
+    background: #ffffff;
+    border: 0.3px solid #cccccc;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    padding: 30px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .marks-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 10px;
+    background: linear-gradient(90deg, #2C5AA0 0%, #3A7BD5 100%);
+  }
+  
   /* Header */
-  .header{
-    text-align:center;
-    border-bottom:3px solid #1e3c72;
-    padding-bottom:10px;
-    margin-bottom:20px;
+  .header {
+    text-align: center;
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+    position: relative;
   }
-  .header img{
-    width:80px;
-    height:80px;
-    object-fit:contain;
-    float:left;
+  
+  .header::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #2C5AA0, transparent);
   }
-  .school-name{
-    font-size:1.8rem;
-    font-weight:700;
-    color:#1e3c72;
+  
+  .school-name {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #2C5AA0;
+    margin-bottom: 5px;
+    letter-spacing: 0.5px;
   }
-  .school-address{
-    font-size:0.95rem;
-    color:#444;
+  
+  .school-address {
+    font-size: 0.9rem;
+    color: #555555;
+    margin-bottom: 10px;
   }
-
+  
+  .exam-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #2C5AA0;
+    margin-top: 15px;
+  }
+  
   /* Student info */
-  .student-info{
-    margin:25px 0;
-    border:1px solid #ccc;
-    padding:15px 20px;
-    border-radius:6px;
+  .student-info {
+    margin: 25px 0;
+    border: 0.3px solid #cccccc;
+    padding: 15px;
+    border-radius: 8px;
+    background: #F8FAFF;
   }
-  .student-info table{
-    width:100%;
-    border-collapse:collapse;
+  
+  .student-info table {
+    width: 100%;
+    border-collapse: collapse;
   }
-  .student-info td{
-    padding:8px 5px;
-    font-size:0.95rem;
+  
+  .student-info td {
+    padding: 8px 6px;
+    font-size: 0.95rem;
   }
-  .student-info td:first-child{
-    font-weight:600;
-    width:180px;
+  
+  .student-info td:first-child, 
+  .student-info td:nth-child(3) {
+    font-weight: 500;
+    width: 170px;
+    color: #2C5AA0;
   }
-
+  
+  .student-info td:nth-child(2), 
+  .student-info td:nth-child(4) {
+    color: #333333;
+  }
+  
   /* Marks Table */
-  .marks-table{
-    width:100%;
-    border-collapse:collapse;
-    margin-top:15px;
+  .section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2C5AA0;
+    margin: 20px 0 15px 0;
+    padding-bottom: 5px;
+    border-bottom: 1px dashed #cccccc;
   }
-  .marks-table th, .marks-table td{
-    border:1px solid #aaa;
-    padding:10px;
-    text-align:center;
-    font-size:0.95rem;
+  
+  .marks-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-radius: 6px;
+    overflow: hidden;
   }
-  .marks-table th{
-    background:#1e3c72;
-    color:#fff;
-    font-weight:600;
+  
+  .marks-table th {
+    background: #2C5AA0;
+    color: #ffffff;
+    font-weight: 500;
+    padding: 12px 8px;
+    font-size: 0.9rem;
+    text-align: center;
   }
-  .marks-table tr:nth-child(even){
-    background:#f9f9f9;
+  
+  .marks-table td {
+    padding: 10px 8px;
+    text-align: center;
+    font-size: 0.9rem;
+    border: 0.3px solid #cccccc;
   }
-
+  
+  .marks-table tr:nth-child(even) {
+    background: #F8FAFF;
+  }
+  
+  .marks-table tr:last-child {
+    background: #F0F5FF;
+    font-weight: 600;
+    color: #2C5AA0;
+  }
+  
+  /* Summary */
+  .summary {
+    text-align: center;
+    margin: 20px 0;
+    padding: 12px;
+    background: #F0F5FF;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    color: #2C5AA0;
+    font-weight: 500;
+  }
+  
   /* Footer */
-  .footer{
-    margin-top:40px;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
+  .footer {
+    margin-top: 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
-  .sign-box{
-    text-align:center;
-    width:30%;
+  
+  .sign-box {
+    text-align: center;
+    width: 40%;
+    padding: 10px;
   }
-  .sign-box p{
-    border-top:1px solid #333;
-    padding-top:5px;
-    margin-top:60px;
-    font-size:0.9rem;
-    font-weight:600;
+  
+  .sign-box p {
+    border-top: 0.3px solid #999999;
+    padding-top: 40px;
+    margin-top: 30px;
+    font-size: 0.9rem;
+    color: #666666;
+    font-weight: 500;
   }
-  .result-box{
-    text-align:center;
-    font-size:1rem;
-    font-weight:600;
-    color:#1e3c72;
+  
+  .result-box {
+    text-align: center;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #2C5AA0;
+    padding: 15px;
+    border-radius: 8px;
+    background: #F8FAFF;
+    width: 100%;
+    margin: 20px 0;
   }
-
+  
+  .pass {
+    color: #32A852;
+  }
+  
+  .fail {
+    color: #C70039;
+  }
+  
   /* Print optimization */
   @media print {
-    body{background:#fff;}
-    .marks-card{box-shadow:none;border:1px solid #000;}
+    body {
+      background: #ffffff;
+      padding: 0;
+    }
+    
+    .page-border {
+      display: none;
+    }
+    
+    .marks-card {
+      box-shadow: none;
+      border: 0.3px solid #000000;
+    }
   }
 </style>
 </head>
 <body>
+  <!-- Complete page border with corner decorations -->
+  <div class="page-border">
+    <div class="corner-bottom-left"></div>
+    <div class="corner-bottom-right"></div>
+  </div>
 
-<div class="marks-card">
-
-  <div class="header">
-    <img src="school-logo.png" alt="School Logo">
-    <div>
+  <div class="marks-card">
+    <div class="header">
       <div class="school-name">GREENWOOD PUBLIC SCHOOL</div>
       <div class="school-address">123, MG Road, Bengaluru - 560001 | Ph: (080) 2345 6789</div>
-      <h3 style="margin-top:10px;color:#1e3c72;">ANNUAL EXAMINATION MARKS CARD</h3>
+      <div class="exam-title">ANNUAL EXAMINATION MARKS CARD</div>
     </div>
-  </div>
 
-  <div class="student-info">
-    <table>
-      <tr><td>Student Name:</td><td>Abhishek M</td><td>Roll No:</td><td>24</td></tr>
-      <tr><td>Class & Section:</td><td>10th A</td><td>Academic Year:</td><td>2024-25</td></tr>
-      <tr><td>Date of Birth:</td><td>15/08/2009</td><td>Admission No:</td><td>10234</td></tr>
+    <div class="student-info">
+      <table>
+        <tr><td>Student Name:</td><td>{{ student_name }}</td><td>Roll No:</td><td>{{ roll_no }}</td></tr>
+        <tr><td>Class & Section:</td><td>{{ class_section }}</td><td>Academic Year:</td><td>{{ academic_year }}</td></tr>
+        <tr><td>Date of Birth:</td><td>{{ date_of_birth }}</td><td>Admission No:</td><td>{{ admission_no }}</td></tr>
+      </table>
+    </div>
+
+    <div class="section-title">Academic Performance</div>
+    
+    <table class="marks-table">
+      <tr>
+        <th>Subject</th>
+        <th>Max Marks</th>
+        <th>Marks Obtained</th>
+        <th>Percentage</th>
+        <th>Grade</th>
+        <th>Result</th>
+      </tr>
+      {% for subject in subject_marks %}
+      <tr>
+        <td>{{ subject.subject }}</td>
+        <td>{{ subject.max_marks }}</td>
+        <td>{{ subject.marks_obtained }}</td>
+        <td>{{ subject.percentage }}</td>
+        <td>{{ subject.grade }}</td>
+        <td>{{ subject.result }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td>Total</td>
+        <td>{{ total_max_marks }}</td>
+        <td>{{ total_marks_obtained }}</td>
+        <td>{{ overall_percentage }}</td>
+        <td>-</td>
+        <td>{{ overall_result }}</td>
+      </tr>
     </table>
-  </div>
 
-  <table class="marks-table">
-    <tr>
-      <th>Subject</th>
-      <th>Max Marks</th>
-      <th>Marks Obtained</th>
-      <th>Grade</th>
-      <th>Result</th>
-    </tr>
-    <tr><td>English</td><td>100</td><td>88</td><td>A</td><td>Pass</td></tr>
-    <tr><td>Mathematics</td><td>100</td><td>92</td><td>A+</td><td>Pass</td></tr>
-    <tr><td>Science</td><td>100</td><td>85</td><td>A</td><td>Pass</td></tr>
-    <tr><td>Social Studies</td><td>100</td><td>90</td><td>A+</td><td>Pass</td></tr>
-    <tr><td>Second Language (Hindi)</td><td>100</td><td>80</td><td>B+</td><td>Pass</td></tr>
-    <tr>
-      <th>Total</th><th>500</th><th>435</th><th>-</th><th>Pass</th>
-    </tr>
-  </table>
-
-  <div class="footer">
-    <div class="sign-box">
-      <p>Class Teacher</p>
+    <div class="summary">
+      Overall Percentage: {{ overall_percentage }}
     </div>
+
     <div class="result-box">
-      Overall Result: <span style="color:green;">PASS</span>
+      Final Result: <span class="{% if overall_result == 'PASS' %}pass{% else %}fail{% endif %}">{{ overall_result }}</span>
     </div>
-    <div class="sign-box">
-      <p>Principal</p>
+
+    <div class="footer">
+      <div class="sign-box">
+        <p>Class Teacher</p>
+      </div>
+      <div class="sign-box">
+        <p>Principal</p>
+      </div>
     </div>
   </div>
-
-</div>
-
 </body>
 </html>

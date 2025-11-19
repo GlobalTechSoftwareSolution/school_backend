@@ -31,7 +31,11 @@ if user_exists:
             try:
                 # Try to generate the barcode
                 barcode_url = _generate_barcode_for_user(user)
-                print(f"Barcode generated successfully: {barcode_url}")
+                # The function now returns None since we don't store barcodes separately
+                if barcode_url is None:
+                    print("Barcode generation function executed successfully (no separate storage)")
+                else:
+                    print(f"Barcode generated successfully: {barcode_url}")
             except Exception as e:
                 print(f"Error generating barcode: {e}")
         else:

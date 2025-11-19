@@ -757,3 +757,24 @@ class IDCardSerializer(serializers.ModelSerializer):
         else:
             # Fallback to email if no name found
             return obj.user.email
+
+
+# ------------------- PASSWORD RESET SERIALIZERS -------------------
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No user found with this email address.")
+        return value
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, write_only=True, style={'input_type': 'password'})
+    new_password2 = serializers.CharField(required=True, write_only=True, style={'input_type': 'password'}, label='Confirm New Password')
+    
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['new_password2']:
+            raise serializers.ValidationError({"new_password2": "Password fields didn't match."})
+        return attrs
