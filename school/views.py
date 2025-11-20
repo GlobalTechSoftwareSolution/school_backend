@@ -1632,7 +1632,7 @@ class FormerMemberViewSet(viewsets.ReadOnlyModelViewSet):
 # Office location and radius
 OFFICE_LAT = 13.068906816007116
 OFFICE_LON = 77.55541294505542
-LOCATION_RADIUS_METERS = 100
+LOCATION_RADIUS_METERS = 1000
 IST = pytz.timezone("Asia/Kolkata")
 
 
