@@ -399,6 +399,43 @@ class StudentViewSet(viewsets.ModelViewSet):
             base += '/'
         return f"{base}{object_name}"
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        if file:
+            url = self._upload_file_to_minio(instance, file)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        file = request.FILES.get('profile_picture') or request.FILES.get('file')
+        # For create, we may not have a Student instance yet; use fallbacks from request data
+        fallback_email = data.get('email')
+        fallback_student_id = data.get('student_id')
+        if file:
+            # No Student instance yet; rely on fallback values for object path
+            url = self._upload_file_to_minio(None, file, fallback_email=fallback_email, fallback_student_id=fallback_student_id)
+            if url is None:
+                return Response({'error': 'minio Python package is not installed. Please install dependencies from requirements.txt.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data['profile_picture'] = url
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     @action(detail=False, methods=['get'])
     def by_class(self, request):
         """Get students by class name (and optional section)."""
@@ -1919,18 +1956,26 @@ def school_attendance_view(request):
                                 s_path = s_tmp.name
                                 
                             try:
-                                s_img = face_recognition.load_image_file(s_path)
-                                s_encs = face_recognition.face_encodings(s_img)
-                                if not s_encs:
-                                    debug_entry['status'] = 'No face found in profile pic'
+                                # Check if face_recognition is available before calling its methods
+                                if face_recognition is not None:
+                                    s_img = face_recognition.load_image_file(s_path)
+                                    s_encs = face_recognition.face_encodings(s_img)
+                                    if not s_encs:
+                                        debug_entry['status'] = 'No face found in profile pic'
+                                    else:
+                                        # Convert back to numpy array for face_distance calculation
+                                        import numpy as np
+                                        uploaded_encoding_np = np.array(uploaded_encoding) if isinstance(uploaded_encoding, list) else uploaded_encoding
+                                        # Check if face_recognition is still available before calling face_distance
+                                        if face_recognition is not None:
+                                            distances = face_recognition.face_distance([s_encs[0]], uploaded_encoding_np)
+                                            dist = float(distances[0])
+                                            debug_entry['status'] = f'Distance: {dist:.4f}'
+                                            debug_entry['match'] = dist <= 0.45
+                                        else:
+                                            debug_entry['status'] = 'Face recognition library not available for distance calculation'
                                 else:
-                                    # Convert back to numpy array for face_distance calculation
-                                    import numpy as np
-                                    uploaded_encoding_np = np.array(uploaded_encoding) if isinstance(uploaded_encoding, list) else uploaded_encoding
-                                    distances = face_recognition.face_distance([s_encs[0]], uploaded_encoding_np)
-                                    dist = float(distances[0])
-                                    debug_entry['status'] = f'Distance: {dist:.4f}'
-                                    debug_entry['match'] = dist <= 0.45
+                                    debug_entry['status'] = 'Face recognition library not available'
                             except Exception as e:
                                 debug_entry['status'] = f'Processing Error: {str(e)}'
                             finally:

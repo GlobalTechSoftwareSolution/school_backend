@@ -76,9 +76,33 @@ class StudentSerializer(serializers.ModelSerializer):
 
 
 class StudentCreateSerializer(serializers.ModelSerializer):
+    # Override profile_picture to accept both files and URLs
+    profile_picture = serializers.CharField(required=False, allow_blank=True)
+    
     class Meta:
         model = Student
         fields = '__all__'
+        
+    def validate_profile_picture(self, value):
+        # Allow empty values
+        if not value:
+            return value
+            
+        # If it looks like a URL, validate it as a URL
+        if value.startswith(('http://', 'https://')):
+            from django.core.validators import URLValidator
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            
+            validator = URLValidator()
+            try:
+                validator(value)
+                return value
+            except DjangoValidationError:
+                raise serializers.ValidationError("Enter a valid URL.")
+        
+        # If it's not a URL, assume it's a file path or identifier
+        # and allow it to pass through (will be handled by the viewset)
+        return value
 
 
 # ------------------- TEACHER SERIALIZERS -------------------
