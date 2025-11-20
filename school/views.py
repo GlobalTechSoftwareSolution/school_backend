@@ -2885,25 +2885,37 @@ def password_reset_request(request):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             
             # Create reset link
-            reset_link = f"{request.build_absolute_uri('/api/password-reset-confirm/')}{uid}/{token}/"
+            reset_link = f"https://globaltechsoftwaresolutions.cloud/school-dashboard/reset-password/{uid}/{token}"
             
-            # Render email template
+            # Send email
             subject = "Password Reset Request"
             message = render_to_string('password_reset_email.html', {
                 'user': user,
                 'reset_link': reset_link,
-                'site_name': 'School Management System'
             })
             
-            # Send email
-            send_mail(
-                subject,
-                message,
-                settings.DEFAULT_FROM_EMAIL,
-                [email],
-                fail_silently=False,
-                html_message=message
-            )
+            try:
+                import smtplib
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                    html_message=message
+                )
+            except smtplib.SMTPAuthenticationError as e:
+                return Response({
+                    'error': 'SMTP Authentication Failed',
+                    'detail': 'The server refused the email credentials.',
+                    'debug_loaded_user': settings.EMAIL_HOST_USER,
+                    'server_response': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                return Response({
+                    'error': 'Email Sending Failed',
+                    'detail': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             return Response({
                 'message': 'Password reset email sent successfully. Please check your inbox.'
