@@ -1613,14 +1613,26 @@ def _verify_location(latitude: float, longitude: float, radius_meters: int | Non
 def school_attendance_view(request):
     """Mark attendance by matching face image and verifying location for all users (except parents)."""
     # Only require face_recognition if an image is provided; allow deterministic marking via user_email otherwise
-    # Get request parameters early to avoid unbound variable issues
-    forced_email = request.POST.get('user_email')
-    barcode = request.POST.get('barcode')
+    # Get request parameters from both POST data and JSON data
+    if request.content_type == 'application/json':
+        # Handle JSON data
+        data = request.data
+        forced_email = data.get('user_email')
+        barcode = data.get('barcode')
+        lat = data.get('latitude')
+        lon = data.get('longitude')
+    else:
+        # Handle form data
+        forced_email = request.POST.get('user_email')
+        barcode = request.POST.get('barcode')
+        lat = request.POST.get('latitude')
+        lon = request.POST.get('longitude')
     
     # Check if face_recognition is available
     if face_recognition is None:
         # If face_recognition is not available, we can only process barcode or email
-        if request.FILES.get('image') or request.FILES.get('file'):
+        uploaded_file = request.FILES.get('image') or request.FILES.get('file')
+        if uploaded_file or (request.content_type == 'application/json' and request.data.get('image')):
             if not barcode and not forced_email:
                 return JsonResponse({
                     'status': 'error',
@@ -1628,11 +1640,9 @@ def school_attendance_view(request):
                 }, status=500)
     
     # Validate that we have the required data
-    if not request.POST.get('latitude') and not request.POST.get('longitude'):
+    if not lat and not lon:
         return JsonResponse({'status': 'fail', 'message': 'Latitude and longitude required'}, status=400)
 
-    lat = request.POST.get('latitude')
-    lon = request.POST.get('longitude')
     if lat is None or lon is None:
         return JsonResponse({'status': 'fail', 'message': 'Latitude and longitude required'}, status=400)
     try:
@@ -1721,9 +1731,9 @@ def school_attendance_view(request):
                 # Assuming barcode is the user's email for simplicity
                 # In a real implementation, you might have a separate barcode field
                 matched_user = User.objects.get(email=barcode)
-                # Check if user is a parent (parents should not have attendance)
-                if matched_user.role == 'Parent':
-                    return JsonResponse({'status': 'fail', 'message': f'Parents cannot have attendance records'}, status=400)
+                # Check if user is a parent or student (these roles should not have attendance)
+                if matched_user.role == 'Parent' or matched_user.role == 'Student':
+                    return JsonResponse({'status': 'fail', 'message': f'Invalid user role: {matched_user.role}. Only staff members can mark attendance.'}, status=400)
             except User.DoesNotExist:
                 # If barcode lookup fails, continue with other methods
                 if not uploaded_file and not forced_email:
@@ -1733,9 +1743,9 @@ def school_attendance_view(request):
         if forced_email and not matched_user:
             try:
                 matched_user = User.objects.get(email=forced_email)
-                # Check if user is a parent (parents should not have attendance)
-                if matched_user.role == 'Parent':
-                    return JsonResponse({'status': 'fail', 'message': f'Parents cannot have attendance records'}, status=400)
+                # Check if user is a parent or student (these roles should not have attendance)
+                if matched_user.role == 'Parent' or matched_user.role == 'Student':
+                    return JsonResponse({'status': 'fail', 'message': f'Invalid user role: {matched_user.role}. Only staff members can mark attendance.'}, status=400)
             except User.DoesNotExist:
                 return JsonResponse({'status': 'fail', 'message': f'User not found: {forced_email}'}, status=404)
         
@@ -1762,18 +1772,18 @@ def school_attendance_view(request):
             # Auto-set check_in for face recognition flow
             check_in = timezone.now().time()
             
-            # Iterate over users (except parents) with profile images and pick the best match by distance
+            # Iterate over users (only staff members) with profile images and pick the best match by distance
             best_user = None
             best_distance = None
-            # Get all non-parent users with profile pictures
+            # Get only staff users (not students or parents) with profile pictures
             # We need to check profile pictures in related models since User doesn't have this field directly
-            candidates = User.objects.exclude(role='Parent').filter(
+            candidates = User.objects.exclude(role__in=['Parent', 'Student']).filter(
                 models.Q(teacher__profile_picture__isnull=False) & ~models.Q(teacher__profile_picture='') |
                 models.Q(admin__profile_picture__isnull=False) & ~models.Q(admin__profile_picture='') |
                 models.Q(principal__profile_picture__isnull=False) & ~models.Q(principal__profile_picture='') |
-                models.Q(management__profile_picture__isnull=False) & ~models.Q(management__profile_picture='') |
-                models.Q(student__profile_picture__isnull=False) & ~models.Q(student__profile_picture='')
-            ).distinct()
+                models.Q(management__profile_picture__isnull=False) & ~models.Q(management__profile_picture='')
+            ).select_related('teacher', 'admin', 'principal', 'management').distinct()
+            
             for user in candidates:
                 try:
                     # Get the actual user profile object to access profile_picture
@@ -1786,8 +1796,6 @@ def school_attendance_view(request):
                         profile_obj = user.principal
                     elif hasattr(user, 'management') and user.management and user.management.profile_picture:
                         profile_obj = user.management
-                    elif hasattr(user, 'student') and user.student and user.student.profile_picture:
-                        profile_obj = user.student
                     
                     # Skip users without a profile object
                     if profile_obj is None:
@@ -1816,11 +1824,13 @@ def school_attendance_view(request):
                         fr = face_recognition
                         if fr is None:
                             # Skip face recognition if library is not available
-                            os.remove(s_path) if os.path.exists(s_path) else None
+                            if os.path.exists(s_path):
+                                os.remove(s_path)
                             continue
                         s_img = fr.load_image_file(s_path)
                         s_encs = fr.face_encodings(s_img)
-                        os.remove(s_path)
+                        if os.path.exists(s_path):
+                            os.remove(s_path)
                         if not s_encs:
                             continue
                         # Validate uploaded encoding before computing distance
@@ -1840,7 +1850,10 @@ def school_attendance_view(request):
                                 continue  # Skip if not a valid encoding format
                         # Compute distance and keep the closest under threshold
                         try:
-                            distances = fr.face_distance([s_encs[0]], uploaded_encoding)
+                            # Convert back to numpy array for face_distance calculation
+                            import numpy as np
+                            uploaded_encoding_np = np.array(uploaded_encoding) if isinstance(uploaded_encoding, list) else uploaded_encoding
+                            distances = fr.face_distance([s_encs[0]], uploaded_encoding_np)
                             if len(distances) > 0:
                                 distance_val = float(distances[0])
                                 # Stricter threshold to avoid random mismatches
@@ -1856,14 +1869,84 @@ def school_attendance_view(request):
                             pass
                     except Exception:
                         # If there's an error processing this user's image, continue with others
-                        os.remove(s_path) if os.path.exists(s_path) else None
+                        if os.path.exists(s_path):
+                            os.remove(s_path)
                         continue
                 except Exception:
                     continue
             matched_user = best_user
 
         if matched_user is None:
-            return JsonResponse({'status': 'fail', 'message': 'No matching user found'}, status=404)
+            # DEBUG: Return detailed info about why it failed
+            debug_info = []
+            
+            # Re-run the loop to gather debug info (only if we have an encoding)
+            if uploaded_encoding is not None:
+                candidates = User.objects.exclude(role__in=['Parent', 'Student']).filter(
+                    models.Q(teacher__profile_picture__isnull=False) & ~models.Q(teacher__profile_picture='') |
+                    models.Q(admin__profile_picture__isnull=False) & ~models.Q(admin__profile_picture='') |
+                    models.Q(principal__profile_picture__isnull=False) & ~models.Q(principal__profile_picture='') |
+                    models.Q(management__profile_picture__isnull=False) & ~models.Q(management__profile_picture='')
+                ).select_related('teacher', 'admin', 'principal', 'management').distinct()
+                
+                for user in candidates:
+                    try:
+                        profile_obj = None
+                        if hasattr(user, 'admin') and user.admin and user.admin.profile_picture: profile_obj = user.admin
+                        elif hasattr(user, 'teacher') and user.teacher and user.teacher.profile_picture: profile_obj = user.teacher
+                        elif hasattr(user, 'principal') and user.principal and user.principal.profile_picture: profile_obj = user.principal
+                        elif hasattr(user, 'management') and user.management and user.management.profile_picture: profile_obj = user.management
+                        
+                        if not profile_obj: continue
+                        
+                        debug_entry = {'email': user.email, 'url': profile_obj.profile_picture, 'status': 'Checking'}
+                        
+                        try:
+                            resp = requests.get(profile_obj.profile_picture, timeout=5)
+                            if resp.status_code != 200:
+                                debug_entry['status'] = f'Download Failed: {resp.status_code}'
+                                debug_info.append(debug_entry)
+                                continue
+                            
+                            # Determine extension
+                            file_extension = '.jpg'
+                            content_type = resp.headers.get('content-type', '')
+                            if 'png' in content_type: file_extension = '.png'
+                            elif 'jpeg' in content_type: file_extension = '.jpeg'
+                            
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as s_tmp:
+                                s_tmp.write(resp.content)
+                                s_path = s_tmp.name
+                                
+                            try:
+                                s_img = face_recognition.load_image_file(s_path)
+                                s_encs = face_recognition.face_encodings(s_img)
+                                if not s_encs:
+                                    debug_entry['status'] = 'No face found in profile pic'
+                                else:
+                                    # Convert back to numpy array for face_distance calculation
+                                    import numpy as np
+                                    uploaded_encoding_np = np.array(uploaded_encoding) if isinstance(uploaded_encoding, list) else uploaded_encoding
+                                    distances = face_recognition.face_distance([s_encs[0]], uploaded_encoding_np)
+                                    dist = float(distances[0])
+                                    debug_entry['status'] = f'Distance: {dist:.4f}'
+                                    debug_entry['match'] = dist <= 0.45
+                            except Exception as e:
+                                debug_entry['status'] = f'Processing Error: {str(e)}'
+                            finally:
+                                if os.path.exists(s_path): os.remove(s_path)
+                        except Exception as e:
+                            debug_entry['status'] = f'Connection Error: {str(e)}'
+                        
+                        debug_info.append(debug_entry)
+                    except Exception:
+                        continue
+
+            return JsonResponse({
+                'status': 'fail', 
+                'message': 'No matching user found',
+                'debug_info': debug_info
+            }, status=404)
 
         # Verify location proximity
         try:
