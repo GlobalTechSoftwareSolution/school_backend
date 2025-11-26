@@ -15,7 +15,7 @@ from datetime import timedelta
 from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # pyright: ignore[reportUndefinedVariable]
 
 
 # Quick-start development settings - unsuitable for production
@@ -23,8 +23,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-+ay#yvqgycfxhi670kx@wu5%6kz7l+e0)31nlo*l+cvp1fkona'
-
-ALLOWED_HOSTS = [h for h in str(config('DJANGO_ALLOWED_HOSTS', default='*')).split(',') if h]
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -35,6 +33,7 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    'corsheaders',   # <-- MUST be at top
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -45,33 +44,19 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'django_filters',
     'school',
-    'corsheaders',
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',   # MUST be here at the top
+    'django.middleware.common.CommonMiddleware',  # <-- This must be AFTER CORS
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = [o for o in str(config('CORS_ALLOWED_ORIGINS', default='')).split(',') if o]
-CORS_ALLOW_CREDENTIALS = True
-
-
-CORS_ALLOW_HEADERS = [
-    'content-type',
-    'accept',
-    'authorization',
-]
-
-# CSRF trusted origins
-CSRF_TRUSTED_ORIGINS = [o for o in str(config('CSRF_TRUSTED_ORIGINS', default='')).split(',') if o]
 
 ROOT_URLCONF = 'school_backend.urls'
 
@@ -192,7 +177,7 @@ SIMPLE_JWT = {
 MINIO_STORAGE = {
     "ENDPOINT": "minio.globaltechsoftwaresolutions.cloud:9000",
     "ACCESS_KEY": "admin",
-    "SECRET_KEY": "admin123",
+    "SECRET_KEY": "admin12345",
     "BUCKET_NAME": "school-media",
     "USE_SSL": True,
 }
@@ -209,3 +194,30 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='your-email@yourdomain.com')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='your-email-password')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='your-email@yourdomain.com')
+
+
+
+
+# CORS CONFIG
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
+
+CORS_ALLOW_METHODS = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",   # <--- This fixes your error
+]
