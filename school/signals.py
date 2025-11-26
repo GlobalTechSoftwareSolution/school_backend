@@ -131,7 +131,7 @@ def _backup_to_former_member(user_instance):
                 admission_date=getattr(obj, 'admission_date', None),
                 date_joined=getattr(obj, 'date_joined', None),
                 # Academic fields
-                class_name=getattr(obj.class_enrolled, 'class_name', None) if hasattr(obj, 'class_enrolled') and obj.class_enrolled else None,
+                class_name=getattr(obj.class_id, 'class_name', None) if hasattr(obj, 'class_id') and obj.class_id else None,
                 department_name=getattr(obj.department, 'department_name', None) if hasattr(obj, 'department') and obj.department else None,
                 designation=getattr(obj, 'designation', ''),
                 qualification=getattr(obj, 'qualification', ''),
@@ -160,16 +160,22 @@ def _backup_to_former_member(user_instance):
 
 def _create_student_record(email):
     """Create a Student record with default values."""
-    if not Student.objects.filter(email=email).exists():
+    # Get the User instance
+    try:
+        user_instance = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return
+    
+    if not Student.objects.filter(email=user_instance).exists():
         Student.objects.create(
-            email=email,
+            email=user_instance,
             fullname='',
             student_id=None,
             phone='',
             date_of_birth=None,
             gender='',
             admission_date=None,
-            class_enrolled=None,
+            class_id=None,
             parent=None,
             profile_picture='',
             residential_address='',
@@ -183,9 +189,15 @@ def _create_student_record(email):
 
 def _create_teacher_record(email):
     """Create a Teacher record with default values."""
-    if not Teacher.objects.filter(email=email).exists():
+    # Get the User instance
+    try:
+        user_instance = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return
+    
+    if not Teacher.objects.filter(email=user_instance).exists():
         Teacher.objects.create(
-            email=email,
+            email=user_instance,
             fullname='',
             teacher_id=None,
             phone='',
@@ -208,9 +220,15 @@ def _create_teacher_record(email):
 
 def _create_principal_record(email):
     """Create a Principal record with default values."""
-    if not Principal.objects.filter(email=email).exists():
+    # Get the User instance
+    try:
+        user_instance = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return
+    
+    if not Principal.objects.filter(email=user_instance).exists():
         Principal.objects.create(
-            email=email,
+            email=user_instance,
             fullname='',
             phone='',
             date_of_birth=None,
@@ -225,9 +243,15 @@ def _create_principal_record(email):
 
 def _create_management_record(email):
     """Create a Management record with default values."""
-    if not Management.objects.filter(email=email).exists():
+    # Get the User instance
+    try:
+        user_instance = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return
+    
+    if not Management.objects.filter(email=user_instance).exists():
         Management.objects.create(
-            email=email,
+            email=user_instance,
             fullname='',
             phone='',
             designation='',
@@ -241,9 +265,15 @@ def _create_management_record(email):
 
 def _create_admin_record(email):
     """Create an Admin record with default values."""
-    if not Admin.objects.filter(email=email).exists():
+    # Get the User instance
+    try:
+        user_instance = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return
+    
+    if not Admin.objects.filter(email=user_instance).exists():
         Admin.objects.create(
-            email=email,
+            email=user_instance,
             fullname='',
             phone='',
             office_address='',
@@ -253,9 +283,15 @@ def _create_admin_record(email):
 
 def _create_parent_record(email):
     """Create a Parent record with default values."""
-    if not Parent.objects.filter(email=email).exists():
+    # Get the User instance
+    try:
+        user_instance = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return
+    
+    if not Parent.objects.filter(email=user_instance).exists():
         Parent.objects.create(
-            email=email,
+            email=user_instance,
             fullname='',
             phone='',
             occupation='',

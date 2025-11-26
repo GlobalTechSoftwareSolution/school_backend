@@ -174,7 +174,7 @@ SIMPLE_JWT = {
 MINIO_STORAGE = {
     "ENDPOINT": "minio.globaltechsoftwaresolutions.cloud:9000",
     "ACCESS_KEY": "admin",
-    "SECRET_KEY": "admin12345",
+    "SECRET_KEY": "admin123",
     "BUCKET_NAME": "school-media",
     "USE_SSL": True,
 }
