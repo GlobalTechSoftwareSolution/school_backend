@@ -24,6 +24,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-+ay#yvqgycfxhi670kx@wu5%6kz7l+e0)31nlo*l+cvp1fkona'
 
+ALLOWED_HOSTS = [h for h in str(config('DJANGO_ALLOWED_HOSTS', default='*')).split(',') if h]
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -43,9 +45,11 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'django_filters',
     'school',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -54,6 +58,20 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [o for o in str(config('CORS_ALLOWED_ORIGINS', default='')).split(',') if o]
+CORS_ALLOW_CREDENTIALS = True
+
+
+CORS_ALLOW_HEADERS = [
+    'content-type',
+    'accept',
+    'authorization',
+]
+
+# CSRF trusted origins
+CSRF_TRUSTED_ORIGINS = [o for o in str(config('CSRF_TRUSTED_ORIGINS', default='')).split(',') if o]
 
 ROOT_URLCONF = 'school_backend.urls'
 

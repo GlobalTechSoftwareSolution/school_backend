@@ -1840,7 +1840,7 @@ COPY public.school_grade (id, exam_type, marks_obtained, total_marks, exam_date,
 --
 
 COPY public.school_holiday (id, name, date, type, country, year, month, weekday) FROM stdin;
-2	New Year's Day	2025-01-01	Observance	India	2025	1	Wednesday
+2	New Year’s Day	2025-01-01	Observance	India	2025	1	Wednesday
 3	Makar Sankranti / Pongal / Magh Bihu	2025-01-14	Harvest Festival	India	2025	1	Tuesday
 4	Republic Day	2025-01-26	National Holiday	India	2025	1	Sunday
 5	Maha Shivaratri	2025-02-26	Festival	India	2025	2	Wednesday
