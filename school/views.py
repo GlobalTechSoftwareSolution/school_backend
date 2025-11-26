@@ -2885,7 +2885,7 @@ def password_reset_request(request):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             
             # Create reset link
-            reset_link = f"https://globaltechsoftwaresolutions.cloud/reset-password/{uid}/{token}"
+            reset_link = f"https://school.globaltechsoftwaresolutions.cloud/reset-password/{uid}/{token}"
             
             # Send email
             subject = "Password Reset Request"
