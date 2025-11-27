@@ -5,6 +5,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from decimal import Decimal
 import pytz
+from decouple import config
 from school.models import (
     Department, Class, Subject, Student, Teacher, Principal, Management, Admin, Parent,
     Attendance, Grade, FeeStructure, FeePayment, Timetable, Assignment, FormerMember,
@@ -90,7 +91,8 @@ class Command(BaseCommand):
                     }
                 )
                 if created:
-                    user.set_password('password123')
+                    password = str(config('DEFAULT_USER_PASSWORD', default='password123'))
+                    user.set_password(password)
                     user.save()
                 users.append(user)
             except Exception as e:

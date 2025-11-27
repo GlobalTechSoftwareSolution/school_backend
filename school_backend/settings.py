@@ -22,10 +22,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # pyright: ignore[reportUndef
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-+ay#yvqgycfxhi670kx@wu5%6kz7l+e0)31nlo*l+cvp1fkona'
+SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = ['*']
 
@@ -175,13 +175,13 @@ SIMPLE_JWT = {
 }
 
 MINIO_STORAGE = {
-    "ENDPOINT": "minio.globaltechsoftwaresolutions.cloud:9000",
-    "ACCESS_KEY": "admin",
-    "SECRET_KEY": "admin12345",
-    "BUCKET_NAME": "school-media",
-    "USE_SSL": True,
+    "ENDPOINT": config('MINIO_ENDPOINT'),
+    "ACCESS_KEY": config('MINIO_ACCESS_KEY'),
+    "SECRET_KEY": config('MINIO_SECRET_KEY'),
+    "BUCKET_NAME": config('MINIO_BUCKET_NAME'),
+    "USE_SSL": config('MINIO_USE_SSL', default=True, cast=bool),
 }
-BASE_BUCKET_URL = "https://minio.globaltechsoftwaresolutions.cloud:9000/school-media/"
+BASE_BUCKET_URL = config('BASE_BUCKET_URL', default="https://minio.globaltechsoftwaresolutions.cloud:9000/school-media/")
 
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/chat/'
