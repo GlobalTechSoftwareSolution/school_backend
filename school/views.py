@@ -1238,6 +1238,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             date=current_date,
             defaults={
                 'check_in': current_time,
+                'status': 'Present',  # Set status to Present by default
                 'user': user
             }
         )
@@ -1246,6 +1247,10 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if not created:
             if 'check_out' in request.data and not attendance.check_out:
                 attendance.check_out = request.data['check_out']
+                attendance.save()
+            # If the attendance was previously marked as Absent, update it to Present
+            elif attendance.status != 'Present':
+                attendance.status = 'Present'
                 attendance.save()
 
         serializer = self.get_serializer(attendance)
@@ -1317,16 +1322,18 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         """
         POST /api/attendance/bulk_update_status/
         Bulk update attendance status for users (except parents).
+        For students, uses StudentAttendance model.
+        For staff, uses Attendance model.
         Body: {
             "marked_by_email": "admin@example.com",
             "date": "2023-10-01",  // optional, defaults to today
             "updates": [
                 {"user_email": "teacher1@example.com", "status": "Present"},
-                {"user_email": "principal1@example.com", "status": "Absent"}
+                {"user_email": "student1@example.com", "status": "Present", "subject": 1, "teacher": "teacher@example.com", "class_id": 1}
             ]
         }
         """
-
+        
         marked_by_email = request.data.get('marked_by_email')
         date_str = request.data.get('date')
         updates = request.data.get('updates', [])
@@ -1357,10 +1364,13 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         for update in updates:
             user_email = update.get('user_email')
             new_status = update.get('status')
-            if not user_email or new_status not in ['Present', 'Absent']:
-                errors.append({'update': update, 'error': 'Invalid user_email or status'})
+            
+            # Validate basic fields
+            if not user_email or not new_status:
+                errors.append({'update': update, 'error': 'user_email and status are required'})
                 continue
-
+                
+            # Validate status based on user role
             try:
                 user = User.objects.get(email=user_email)
                 
@@ -1369,25 +1379,92 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                     errors.append({'user_email': user_email, 'error': 'Parents cannot have attendance records'})
                     continue
 
-                # Get or create attendance record with proper defaults
-                attendance, created = Attendance.objects.get_or_create(
-                    user=user,
-                    date=target_date,
-                    defaults={
-                        'status': new_status,
-                        'user': user  # This ensures the role is set correctly in save()
-                    }
-                )
-                
-                # If the record already existed, update the status
-                if not created:
-                    attendance.status = new_status
-                    attendance.save()
+                # Handle student attendance differently
+                if user.role == 'Student':
+                    # For students, we need additional fields
+                    subject_id = update.get('subject')
+                    teacher_email = update.get('teacher')
+                    class_id = update.get('class_id')
                     
-                updated_count += 1
+                    if not all([subject_id, teacher_email, class_id]):
+                        errors.append({
+                            'user_email': user_email, 
+                            'error': 'For student attendance, subject, teacher, and class_id are required'
+                        })
+                        continue
+                    
+                    # Get related objects
+                    try:
+                        subject = Subject.objects.get(id=subject_id)
+                        teacher = User.objects.get(email=teacher_email)
+                        class_obj = Class.objects.get(id=class_id)
+                        
+                        # Validate that the teacher user is actually a teacher
+                        if teacher.role != 'Teacher':
+                            errors.append({
+                                'user_email': user_email, 
+                                'error': 'Teacher email must belong to a user with Teacher role'
+                            })
+                            continue
+                            
+                        # Get student object
+                        student = Student.objects.get(email=user)
+                        
+                        # Get or create student attendance record
+                        student_attendance, created = StudentAttendance.objects.get_or_create(
+                            student=student,
+                            subject=subject,
+                            teacher=teacher.teacher,  # Access the teacher profile
+                            class_id=class_obj,
+                            date=target_date,
+                            defaults={
+                                'status': new_status,
+                            }
+                        )
+                        
+                        # If the record already existed, update the status
+                        if not created:
+                            student_attendance.status = new_status
+                            student_attendance.save()
+                            
+                        updated_count += 1
+                        
+                    except (Subject.DoesNotExist, User.DoesNotExist, Class.DoesNotExist, Student.DoesNotExist) as e:
+                        errors.append({
+                            'user_email': user_email, 
+                            'error': f'Related object not found: {str(e)}'
+                        })
+                        continue
+                else:
+                    # Handle staff attendance (teachers, principals, etc.)
+                    # Validate status for staff (only Present/Absent allowed)
+                    if new_status not in ['Present', 'Absent']:
+                        errors.append({
+                            'user_email': user_email, 
+                            'error': 'For staff, status must be either Present or Absent'
+                        })
+                        continue
+                    
+                    # Get or create attendance record with proper defaults
+                    attendance, created = Attendance.objects.get_or_create(
+                        user=user,
+                        date=target_date,
+                        defaults={
+                            'status': new_status,
+                            'user': user  # This ensures the role is set correctly in save()
+                        }
+                    )
+                    
+                    # If the record already existed, update the status
+                    if not created:
+                        attendance.status = new_status
+                        attendance.save()
+                        
+                    updated_count += 1
 
             except User.DoesNotExist:
                 errors.append({'user_email': user_email, 'error': 'User not found'})
+                continue
 
         return Response({
             'marked_by_email': marked_by_email,

@@ -258,7 +258,7 @@ class Attendance(models.Model):
     date = models.DateField()
     check_in = models.TimeField(auto_now_add=True)  # Includes seconds precision
     check_out = models.TimeField(null=True, blank=True)  # Includes seconds precision
-    status = models.CharField(max_length=20, default='Absent', editable=False)
+    status = models.CharField(max_length=20, default='Absent')
     role = models.CharField(max_length=20, editable=False)
     remarks = models.TextField(null=True, blank=True)
 
