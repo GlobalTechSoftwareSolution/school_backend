@@ -3396,4 +3396,3 @@ def send_marks_card(request):
         'student_email': student_email,
         'parent_emails': parent_emails
     }, status=status.HTTP_200_OK)
-

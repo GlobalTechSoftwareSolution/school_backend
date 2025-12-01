@@ -205,7 +205,7 @@ class Command(BaseCommand):
                         certificates='https://example.com/certificates.pdf',
                     )
                     documents.append(doc)
-                    self.stdout.write(f"Created Document: {users[i % len(users)].email}")
+                    self.stdout.write(f"Created Document: {users[i % len(users)].email}")  # pyright: ignore[reportAttributeAccessIssue]
         
         # Ensure we have exactly 5 Award records
         awards = list(Award.objects.all())
@@ -316,7 +316,7 @@ class Command(BaseCommand):
                         status=random.choice(['Pending', 'Approved', 'Rejected']),
                     )
                     leaves.append(leave)
-                    self.stdout.write(f"Created Leave: {users[i % len(users)].email}")
+                    self.stdout.write(f"Created Leave: {users[i % len(users)].email}")  # pyright: ignore[reportAttributeAccessIssue]
         
         # Ensure we have exactly 5 Task records
         tasks = list(Task.objects.all())
@@ -473,7 +473,7 @@ class Command(BaseCommand):
                         transport_fee=random.randint(500, 2000),
                     )
                     transport_details.append(td)
-                    self.stdout.write(f"Created TransportDetails: {users[i % len(users)].email}")
+                    self.stdout.write(f"Created TransportDetails: {users[i % len(users)].email}")  # pyright: ignore[reportAttributeAccessIssue]
         
         # Ensure we have exactly 5 IDCard records
         id_cards = list(IDCard.objects.all())
@@ -491,7 +491,7 @@ class Command(BaseCommand):
                         id_card_url='https://example.com/id_card.pdf',
                     )
                     id_cards.append(id_card)
-                    self.stdout.write(f"Created IDCard: {users[i % len(users)].email}")
+                    self.stdout.write(f"Created IDCard: {users[i % len(users)].email}")  # pyright: ignore[reportAttributeAccessIssue]
         
         self.stdout.write(
             self.style.SUCCESS('Successfully populated database with exactly 5 records for each model!')
