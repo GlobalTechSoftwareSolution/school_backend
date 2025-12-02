@@ -13,6 +13,9 @@ urlpatterns = [
     path('password_reset/', views.password_reset_request, name='password-reset-request'),
     path('password_reset_confirm/<uidb64>/<token>/', views.password_reset_confirm, name='password-reset-confirm'),
     
+    # Contact
+    path('contact/', views.contact_view, name='contact'),
+    
     # ID Card
     path('id_card/', views.id_card_view, name='id-card'),
     

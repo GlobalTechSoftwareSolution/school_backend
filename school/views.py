@@ -3008,6 +3008,83 @@ def password_reset_request(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def contact_view(request):
+    """
+    Handle contact form submissions
+    """
+    from_name = request.data.get('from_name')
+    from_email = request.data.get('from_email')
+    phone = request.data.get('phone')
+    subject = request.data.get('subject')
+    message = request.data.get('message')
+    institution = request.data.get('institution')
+    department = request.data.get('department')
+    
+    # Validate required fields
+    if not from_name or not from_email or not message:
+        return Response({
+            'status': 'error',
+            'message': 'Name, email, and message are required.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Prepare email content
+    email_subject = f"Contact Form Submission: {subject or 'No Subject'}"
+    email_body = f"""
+New contact form submission:
+
+Name: {from_name}
+Email: {from_email}
+Phone: {phone or 'Not provided'}
+Institution: {institution or 'Not provided'}
+Department: {department or 'Not provided'}
+Subject: {subject or 'No subject'}
+
+Message:
+{message}
+"""
+    
+    # Also send a confirmation email to the sender
+    confirmation_subject = "Thank you for contacting us"
+    confirmation_body = f"""
+Dear {from_name},
+
+Thank you for reaching out to us. We have received your message and will get back to you soon.
+
+Best regards,
+School Management Team
+"""
+    
+    try:
+        # Send email to admin
+        send_mail(
+            subject=email_subject,
+            message=email_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[settings.DEFAULT_FROM_EMAIL],  # Send to admin
+            fail_silently=False,
+        )
+        
+        # Send confirmation email to sender
+        send_mail(
+            subject=confirmation_subject,
+            message=confirmation_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[from_email],  # Send to sender
+            fail_silently=False,
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Thank you for your message! We\'ll get back to you soon.'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': f'Failed to send message. Error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def password_reset_confirm(request, uidb64=None, token=None):
     """
     Confirm password reset with token.
