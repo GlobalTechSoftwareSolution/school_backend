@@ -649,8 +649,8 @@ class IDCardViewSet(viewsets.ModelViewSet):
             # Draw profile picture area (110x110px)
             profile_size = 110 * 0.75
             profile_x = width_points // 2 - profile_size // 2
-            # Move profile picture up (decrease offset from 100*0.75 to 90*0.75)
-            profile_y = height_points - 90*0.75 - profile_size
+            # Move profile picture to -20px from top (partially cut off)
+            profile_y = height_points - 60*0.75 - profile_size
             
             # Add white border around profile picture
             border_width = 5 * 0.75
@@ -676,18 +676,59 @@ class IDCardViewSet(viewsets.ModelViewSet):
                     pass
             
             # Add user name and position (shifted upward)
-            name_y = profile_y - 30*0.75  # Moved up from 40*0.75 to 30*0.75
+            name_y = profile_y - 40*0.75  # Increased gap from 30*0.75 to 40*0.75 (10px more)
+            
+            # Handle long names by wrapping to multiple lines
             c.setFillColor(text_color)
             c.setFont("Helvetica-Bold", 15)
-            c.drawCentredString(width_points/2, name_y, user_name)
             
-            position_y = name_y - 22*0.75
+            # Split long names into multiple lines if needed
+            max_name_width = width_points - 40  # Leave some margin on both sides
+            name_lines = []
+            
+            # If the name is too long, split it into multiple lines
+            if c.stringWidth(user_name, "Helvetica-Bold", 15) > max_name_width:
+                words = user_name.split(' ')
+                current_line = ""
+                
+                for word in words:
+                    # Check if adding this word would exceed the width
+                    test_line = current_line + " " + word if current_line else word
+                    if c.stringWidth(test_line, "Helvetica-Bold", 15) <= max_name_width:
+                        current_line = test_line
+                    else:
+                        # If current_line is not empty, add it to lines
+                        if current_line:
+                            name_lines.append(current_line)
+                            current_line = word
+                        else:
+                            # If the single word is too long, we'll have to break it
+                            name_lines.append(word)
+                
+                # Add the last line
+                if current_line:
+                    name_lines.append(current_line)
+            else:
+                # Name fits in one line
+                name_lines = [user_name]
+            
+            # Draw the name lines
+            line_height = 18  # Height between lines
+            total_name_height = len(name_lines) * line_height
+            
+            # Adjust position based on number of lines
+            current_name_y = name_y + (total_name_height - line_height) / 2
+            
+            for i, line in enumerate(name_lines):
+                c.drawCentredString(width_points/2, current_name_y - i * line_height, line)
+            
+            position_y = name_y - (total_name_height - line_height) / 2 - 15*0.75  # Increased spacing from 22 to 15
             c.setFillColor(gray_text)
             c.setFont("Helvetica", 12)
             c.drawCentredString(width_points/2, position_y, position)
             
-            # Add info section (shifted upward)
-            info_start_y = position_y - 28*0.75  # Moved up from 38*0.75 to 28*0.75
+            # Add info section (shifted downward)
+            info_start_y = position_y - 18*0.75  # Moved down by 10px from 28*0.75
             info_padding = 35 * 0.75
             info_x_start = info_padding
             info_x_end = width_points - info_padding
