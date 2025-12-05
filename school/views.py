@@ -366,6 +366,41 @@ class StudentViewSet(viewsets.ModelViewSet):
             return StudentCreateSerializer
         return StudentSerializer
 
+    def list(self, request):
+        """
+        GET /api/students/
+        Returns student records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def _minio_client(self):
         if Minio is None:
             return None
@@ -1073,6 +1108,41 @@ class TeacherViewSet(viewsets.ModelViewSet):
             return TeacherCreateSerializer
         return TeacherSerializer
 
+    def list(self, request):
+        """
+        GET /api/teachers/
+        Returns teacher records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['get'])
     def by_department(self, request):
         """Get teachers by department"""
@@ -1233,10 +1303,37 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     def list(self, request):
         """
         GET /api/attendance/
-        Returns all attendance records from the database
+        Returns attendance records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
         """
-        # Use the default ModelViewSet list behavior
-        return super().list(request)
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def mark(self, request):
@@ -1532,9 +1629,37 @@ class StudentAttendanceViewSet(viewsets.ModelViewSet):
     def list(self, request):
         """
         GET /api/student-attendance/
-        Returns all student attendance records from the database
+        Returns student attendance records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
         """
-        return super().list(request)
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def by_student(self, request):

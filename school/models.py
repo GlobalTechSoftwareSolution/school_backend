@@ -91,6 +91,53 @@ class Class(models.Model):
     def __str__(self):
         return f"{self.class_name} - {self.sec}"
 
+    def save(self, *args, **kwargs):
+        # Check if class_teacher is being set or changed
+        old_class_teacher = None
+        if self.pk:
+            # Get the old class_teacher before saving
+            try:
+                old_instance = Class.objects.get(pk=self.pk)
+                old_class_teacher = old_instance.class_teacher
+            except Class.DoesNotExist:
+                pass
+        
+        # Save the class first
+        super().save(*args, **kwargs)
+        
+        # Handle class teacher assignment
+        if self.class_teacher:
+            # Check if this teacher is already assigned as class teacher to another class
+            existing_assignment = Class.objects.filter(
+                class_teacher=self.class_teacher
+            ).exclude(pk=self.pk).first()
+            
+            if existing_assignment:
+                # According to specification, prevent duplicate assignments
+                # We'll revert the assignment and raise an error
+                if old_class_teacher != self.class_teacher:
+                    self.class_teacher = old_class_teacher
+                    super().save(update_fields=['class_teacher'])
+                # Get teacher email from the existing assignment
+                teacher_email = "Unknown"
+                if existing_assignment.class_teacher and hasattr(existing_assignment.class_teacher, 'email'):
+                    teacher_email = existing_assignment.class_teacher.email
+                raise ValidationError(
+                    f"Teacher {teacher_email} is already assigned as class teacher to {existing_assignment.class_name} {existing_assignment.sec}"
+                )
+            
+            # Update the teacher's fields
+            self.class_teacher.is_classteacher = True
+            self.class_teacher.class_id = self
+            self.class_teacher.sec = self.sec
+            self.class_teacher.save(update_fields=['is_classteacher', 'class_id', 'sec'])
+        elif old_class_teacher:
+            # Class teacher was removed, update the old teacher's fields
+            old_class_teacher.is_classteacher = False
+            old_class_teacher.class_id = None
+            old_class_teacher.sec = None
+            old_class_teacher.save(update_fields=['is_classteacher', 'class_id', 'sec'])
+
 
 # ------------------- SUBJECT -------------------
 class Subject(models.Model):
@@ -265,6 +312,14 @@ class Attendance(models.Model):
     class Meta:
         unique_together = ['user', 'date']
         ordering = ['-date', '-check_in']
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['date']),
+            models.Index(fields=['role']),
+            models.Index(fields=['status']),
+            models.Index(fields=['date', 'user']),
+            models.Index(fields=['role', 'date']),
+        ]
 
     def __str__(self):
         # Get user name based on their role
@@ -314,6 +369,16 @@ class StudentAttendance(models.Model):
     class Meta:
         unique_together = ['student', 'subject', 'date']
         ordering = ['-date', '-created_time']
+        indexes = [
+            models.Index(fields=['student']),
+            models.Index(fields=['subject']),
+            models.Index(fields=['teacher']),
+            models.Index(fields=['class_id']),
+            models.Index(fields=['date']),
+            models.Index(fields=['status']),
+            models.Index(fields=['date', 'student']),
+            models.Index(fields=['class_id', 'date']),
+        ]
 
     def __str__(self):
         return f"{self.student.fullname} - {self.subject.subject_name} - {self.date} ({self.status})"

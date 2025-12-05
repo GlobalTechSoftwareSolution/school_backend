@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, StudentAttendance, Grade, FeeStructure,
@@ -62,6 +63,13 @@ class ClassSerializer(serializers.ModelSerializer):
     class Meta:
         model = Class
         fields = '__all__'
+    
+    def update(self, instance, validated_data):
+        try:
+            return super().update(instance, validated_data)
+        except ValidationError as e:
+            # Re-raise the validation error so it's handled properly by the API
+            raise serializers.ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
 
 
 # ------------------- STUDENT SERIALIZERS -------------------
