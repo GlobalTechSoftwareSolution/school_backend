@@ -364,8 +364,8 @@ class StudentAttendance(models.Model):
         ('Late', 'Late'),
         ('Excused', 'Excused'),
     ], default='Absent')
-    created_time = models.DateTimeField(auto_now_add=True)
-
+    created_time = models.DateTimeField()
+    
     class Meta:
         unique_together = ['student', 'subject', 'date']
         ordering = ['-date', '-created_time']
@@ -384,6 +384,9 @@ class StudentAttendance(models.Model):
         return f"{self.student.fullname} - {self.subject.subject_name} - {self.date} ({self.status})"
 
     def save(self, *args, **kwargs):
+        # If created_time is not provided, set it to current time
+        if not self.created_time:
+            self.created_time = timezone.now()
         self.full_clean()
         super().save(*args, **kwargs)
 

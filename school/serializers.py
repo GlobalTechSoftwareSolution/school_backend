@@ -280,7 +280,7 @@ class StudentAttendanceSerializer(serializers.ModelSerializer):
 class StudentAttendanceCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentAttendance
-        fields = ['student', 'subject', 'teacher', 'class_id', 'date', 'status']
+        fields = ['student', 'subject', 'teacher', 'class_id', 'date', 'status', 'created_time']
 
     def validate(self, attrs):
         student = attrs.get('student')
@@ -298,13 +298,7 @@ class StudentAttendanceCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'The specified teacher does not teach this subject.'
             )
-        
-        # Verify that the student is in the specified class
-        if student.class_id != attrs['class_id']:
-            raise serializers.ValidationError(
-                'The specified class does not match the student\'s assigned class.'
-            )
-        
+            
         return attrs
 
 

@@ -31,6 +31,11 @@ except Exception:  # pragma: no cover
     barcode = None
     ImageWriter = None
 
+# Simple test view for debugging
+from django.http import HttpResponse
+def test_view(request):
+    return HttpResponse("Server is working!")
+
 # Define IST timezone for Indian Standard Time
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -190,6 +195,41 @@ class UserViewSet(viewsets.ModelViewSet):
     search_fields = ['email', 'role']
     ordering_fields = ['created_at', 'email']
 
+    def list(self, request):
+        """
+        GET /api/users/
+        Returns user records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """Approve a user"""
@@ -330,6 +370,41 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     search_fields = ['department_name', 'description']
     ordering_fields = ['department_name', 'created_at']
 
+    def list(self, request):
+        """
+        GET /api/departments/
+        Returns department records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
 
 # ------------------- SUBJECT VIEWSET -------------------
 class SubjectViewSet(viewsets.ModelViewSet):
@@ -340,6 +415,41 @@ class SubjectViewSet(viewsets.ModelViewSet):
     search_fields = ['subject_name', 'subject_code']
     ordering_fields = ['subject_name', 'created_at']
 
+    def list(self, request):
+        """
+        GET /api/subjects/
+        Returns subject records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
 
 # ------------------- CLASS VIEWSET -------------------
 class ClassViewSet(viewsets.ModelViewSet):
@@ -349,6 +459,41 @@ class ClassViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['class_name', 'sec']
     ordering_fields = ['class_name', 'created_at']
+
+    def list(self, request):
+        """
+        GET /api/classes/
+        Returns class records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 # ------------------- STUDENT VIEWSET -------------------
@@ -492,6 +637,41 @@ class AwardViewSet(viewsets.ModelViewSet):
     search_fields = ['title', 'description', 'email__email']
     ordering_fields = ['created_at', 'title']
 
+    def list(self, request):
+        """
+        GET /api/awards/
+        Returns award records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['post'])
     def bulk_upsert(self, request):
         """Upsert awards by (email, title). Expects JSON array."""
@@ -534,6 +714,41 @@ class IDCardViewSet(viewsets.ModelViewSet):
     filterset_fields = ['user']
     search_fields = ['user__email']
     ordering_fields = ['created_at', 'updated_at']
+
+    def list(self, request):
+        """
+        GET /api/idcards/
+        Returns ID card records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def _minio_client(self):
         if Minio is None:
@@ -994,6 +1209,41 @@ class TimetableViewSet(viewsets.ModelViewSet):
     search_fields = ['subject__subject_name', 'teacher__fullname']
     ordering_fields = ['day_of_week', 'start_time']
 
+    def list(self, request):
+        """
+        GET /api/timetables/
+        Returns timetable records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return TimetableCreateSerializer
@@ -1181,6 +1431,41 @@ class PrincipalViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email']
 
+    def list(self, request):
+        """
+        GET /api/principals/
+        Returns principal records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -1210,6 +1495,41 @@ class ManagementViewSet(viewsets.ModelViewSet):
     filterset_fields = ['department', 'designation']
     search_fields = ['fullname', 'designation', 'email__email']
 
+    def list(self, request):
+        """
+        GET /api/managements/
+        Returns management records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -1238,6 +1558,41 @@ class AdminViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email']
 
+    def list(self, request):
+        """
+        GET /api/admins/
+        Returns admin records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -1265,6 +1620,41 @@ class ParentViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter]
     search_fields = ['fullname', 'email__email', 'occupation']
+
+    def list(self, request):
+        """
+        GET /api/parents/
+        Returns parent records with optional pagination.
+        If page or page_size parameters are provided, pagination is enabled.
+        Otherwise, all records are returned (filtered by other parameters).
+        """
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # Apply filters from query parameters
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # If pagination parameters are provided, use pagination
+        if page is not None or page_size is not None:
+            # Set default page size if not provided
+            if page_size is None:
+                page_size = 20
+            else:
+                page_size = int(page_size)
+                
+            # Limit maximum page size
+            page_size = min(page_size, 100)
+            
+            # Apply pagination
+            paginator = self.paginate_queryset(queryset)
+            if paginator is not None:
+                serializer = self.get_serializer(paginator, many=True)
+                return self.get_paginated_response(serializer.data)
+        
+        # If no pagination parameters, return all records (filtered)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
