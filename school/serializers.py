@@ -5,7 +5,7 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, StudentAttendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award,
-    Assignment, SubmittedAssignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class, IDCard
+    Assignment, SubmittedAssignment, Leave, Task, Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class, IDCard, Exam, MCQ_Answers
 )
 
 UserModel = get_user_model()
@@ -463,6 +463,7 @@ class AwardSerializer(serializers.ModelSerializer):
 class AssignmentSerializer(serializers.ModelSerializer):
     subject_name = serializers.CharField(source='subject.subject_name', read_only=True, allow_null=True)
     class_name = serializers.CharField(source='class_id.class_name', read_only=True, allow_null=True)
+    section = serializers.CharField(source='class_id.sec', read_only=True, allow_null=True)
     assigned_by_email = serializers.EmailField(source='assigned_by.email', read_only=True, allow_null=True)
     assigned_by_name = serializers.SerializerMethodField()
 
@@ -783,6 +784,90 @@ class IDCardSerializer(serializers.ModelSerializer):
         else:
             # Fallback to email if no name found
             return obj.user.email
+
+
+# ------------------- EXAM SERIALIZERS -------------------
+class ExamSerializer(serializers.ModelSerializer):
+    class_name = serializers.CharField(source='class_id.class_name', read_only=True)
+    section = serializers.CharField(source='class_id.sec', read_only=True)
+    subject_name = serializers.CharField(source='sub.subject_name', read_only=True)
+    teacher_name = serializers.CharField(source='sub_teacher.fullname', read_only=True)
+    
+    class Meta:
+        model = Exam
+        fields = '__all__'
+
+
+class ExamCreateSerializer(serializers.ModelSerializer):
+    # Accept questions as nested data
+    questions = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        write_only=True
+    )
+    
+    class Meta:
+        model = Exam
+        fields = '__all__'
+        
+    def create(self, validated_data):
+        # Extract questions data
+        questions_data = validated_data.pop('questions', [])
+        
+        # Create the exam
+        exam = Exam.objects.create(**validated_data)
+        
+        # Create MCQ records for each question
+        for question_data in questions_data:
+            MCQ_Answers.objects.create(exam=exam, **question_data)
+            
+        # If no questions were provided, create a default one
+        if not questions_data:
+            MCQ_Answers.objects.create(
+                exam=exam,
+                question="Default question - please update",
+                option_1="Option 1",
+                option_2="Option 2", 
+                option_3="Option 3",
+                option_4="Option 4",
+                correct_option=1
+            )
+            
+        return exam
+
+
+# ------------------- MCQ ANSWERS SERIALIZERS -------------------
+class MCQAnswersSerializer(serializers.ModelSerializer):
+    exam_details = ExamSerializer(source='exam', read_only=True)
+    
+    class Meta:
+        model = MCQ_Answers
+        fields = '__all__'
+
+
+class MCQAnswersCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MCQ_Answers
+        fields = '__all__'
+    
+    def validate(self, attrs):
+        # Auto-set result field based on student_answer and correct_option comparison
+        student_answer = attrs.get('student_answer')
+        
+        # For partial updates, we might not have correct_option in attrs
+        if 'correct_option' in attrs:
+            correct_option = attrs.get('correct_option')
+        elif hasattr(self, 'instance') and self.instance:
+            correct_option = self.instance.correct_option  # pyright: ignore[reportAttributeAccessIssue]
+        else:
+            correct_option = None
+        
+        if student_answer is not None and correct_option is not None:
+            attrs['result'] = (student_answer == correct_option)
+        else:
+            attrs['result'] = False
+            
+        return attrs
 
 
 # ------------------- PASSWORD RESET SERIALIZERS -------------------

@@ -988,3 +988,28 @@ class IDCard(models.Model):
 
     def __str__(self):
         return f"ID Card for {self.user.email}"
+
+# ------------------- EXAM -------------------
+class Exam(models.Model):
+    title = models.CharField(max_length=200)
+    class_id = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='exams')
+    sub = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='exams')
+    sub_teacher = models.ForeignKey('Teacher', on_delete=models.CASCADE, to_field='email', related_name='exams')
+
+    def __str__(self):
+        return f"Exam {self.sub.subject_name} for {self.class_id.class_name} {self.class_id.sec}"
+
+# ------------------- MCQ ANSWERS -------------------
+class MCQ_Answers(models.Model):
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='mcq_answers')
+    question = models.TextField()
+    option_1 = models.TextField()
+    option_2 = models.TextField()
+    option_3 = models.TextField()
+    option_4 = models.TextField()
+    correct_option = models.IntegerField(choices=[(1, 'Option 1'), (2, 'Option 2'), (3, 'Option 3'), (4, 'Option 4')])
+    student_answer = models.IntegerField(choices=[(1, 'Option 1'), (2, 'Option 2'), (3, 'Option 3'), (4, 'Option 4')], null=True, blank=True)
+    result = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"MCQ for Exam {self.exam.exam_id} - Question: {self.question[:50]}..."

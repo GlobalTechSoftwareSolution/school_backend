@@ -43,7 +43,7 @@ from .models import (
     User, Student, Teacher, Principal, Management, Admin, Parent,
     Department, Subject, Attendance, StudentAttendance, Grade, FeeStructure,
     FeePayment, Timetable, FormerMember, Document, Notice, Issue, Holiday, Award, Assignment, SubmittedAssignment, Leave, Task,
-    Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class, IDCard,
+    Project, Program, Activity, Report, FinanceTransaction, TransportDetails, Class, IDCard, Exam, MCQ_Answers,
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer,
@@ -60,6 +60,7 @@ from .serializers import (
     AssignmentSerializer, SubmittedAssignmentSerializer, SubmittedAssignmentCreateSerializer, LeaveSerializer, TaskSerializer,
     ProjectSerializer, ProgramSerializer, ActivitySerializer, ActivityCreateSerializer, ReportSerializer,
     FinanceTransactionSerializer, TransportDetailsSerializer, IDCardSerializer,
+    ExamSerializer, ExamCreateSerializer, MCQAnswersSerializer, MCQAnswersCreateSerializer,
 )
 
 
@@ -4659,3 +4660,269 @@ def send_marks_card(request):
         'student_email': student_email,
         'parent_emails': parent_emails
     }, status=status.HTTP_200_OK)
+
+
+from .pagination import CustomPageNumberPagination
+
+# ------------------- EXAM VIEWSET -------------------
+class ExamViewSet(viewsets.ModelViewSet):
+    queryset = Exam.objects.all()
+    serializer_class = ExamSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['class_id', 'sub', 'sub_teacher']
+    search_fields = ['class_id__class_name', 'sub__subject_name', 'sub_teacher__fullname']
+    ordering_fields = ['class_id', 'sub', 'sub_teacher']
+    ordering = ['class_id']
+    
+    def get_queryset(self):
+        # This ensures filtering still works
+        return super().get_queryset()
+    
+    def list(self, request, *args, **kwargs):
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page')
+        page_size = request.query_params.get('page_size')
+        
+        # If no pagination parameters, return all records in simple format
+        if page is None and page_size is None:
+            queryset = self.filter_queryset(self.get_queryset())
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+        
+        # If pagination parameters are provided, use pagination
+        # Temporarily set pagination class
+        from .pagination import CustomPageNumberPagination
+        self.pagination_class = CustomPageNumberPagination
+        return super().list(request, *args, **kwargs)
+    
+    def get_serializer_class(self):
+        if self.action == 'create' or self.action == 'update':
+            return ExamCreateSerializer
+        return ExamSerializer
+        
+    def perform_create(self, serializer):
+        # Save the exam - MCQ records are created in the serializer
+        serializer.save()
+        
+    # Pagination is handled by the base ViewSet with Django REST Framework's default pagination
+
+
+# ------------------- MCQ ANSWERS VIEWSET -------------------
+class MCQAnswersViewSet(viewsets.ModelViewSet):
+    queryset = MCQ_Answers.objects.all()
+    serializer_class = MCQAnswersSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]  # type: ignore[assignment]
+    filterset_fields = ['exam', 'result']
+    search_fields = ['question']
+    ordering_fields = ['exam', 'result']
+    ordering = ['exam']
+    
+    def get_serializer_class(self):
+        if self.action == 'create' or self.action == 'update' or self.action == 'partial_update':
+            return MCQAnswersCreateSerializer
+        return MCQAnswersSerializer
+    
+    # Override create to only allow POST requests
+    def list(self, request, *args, **kwargs):
+        # For MCQ, only allow fetching, not listing all
+        return Response({'detail': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    
+    def update(self, request, *args, **kwargs):
+        # Allow updating student answers
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated_instance = serializer.save()
+        
+        # Automatically send results to grades table after updating student answers
+        print(f"[DEBUG] UPDATE: About to call _send_results_to_grades for instance {updated_instance.id}")
+        self._send_results_to_grades(updated_instance)
+        print(f"[DEBUG] UPDATE: Finished calling _send_results_to_grades")
+        
+        return Response(serializer.data)
+    
+    def partial_update(self, request, *args, **kwargs):
+        # Allow partial updating of student answers
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated_instance = serializer.save()
+        
+        # Automatically send results to grades table after updating student answers
+        print(f"[DEBUG] About to call _send_results_to_grades for instance {updated_instance.id}")
+        self._send_results_to_grades(updated_instance)
+        print(f"[DEBUG] Finished calling _send_results_to_grades")
+        
+        return Response(serializer.data)
+    
+    def _send_results_to_grades(self, mcq_instance):
+        """Send MCQ results to grades table"""
+        print(f"[DEBUG] Starting _send_results_to_grades for MCQ instance {mcq_instance.id}")
+        try:
+            # Calculate total marks for this exam
+            total_questions = MCQ_Answers.objects.filter(exam=mcq_instance.exam).count()
+            correct_answers = MCQ_Answers.objects.filter(exam=mcq_instance.exam, result=True).count()
+            
+            print(f"[DEBUG] Total questions: {total_questions}, Correct answers: {correct_answers}")
+            
+            # Calculate percentage
+            if total_questions > 0:
+                marks_obtained = (correct_answers / total_questions) * 100
+                total_marks = 100
+                
+                # Prepare grade data
+                student_email = ""
+                if mcq_instance.exam.class_id.students.first():
+                    student_email = str(mcq_instance.exam.class_id.students.first().email.email)
+                
+                grade_data = {
+                    'student': student_email,
+                    'subject': mcq_instance.exam.sub.id,
+                    'teacher': mcq_instance.exam.sub_teacher.email.email,  # Get the actual email address
+                    'exam_type': 'Quiz',
+                    'marks_obtained': marks_obtained,
+                    'total_marks': total_marks,
+                    'exam_date': str(timezone.now().date()),  # Convert to string for JSON compatibility
+                    'remarks': f'MCQ Exam Results - {correct_answers}/{total_questions} correct'
+                }
+                
+                print(f"[DEBUG] Grade data prepared: {grade_data}")
+                
+                # Make actual POST request to grades API
+                import requests
+                from django.conf import settings
+                
+                # Send to the actual grades API
+                grades_api_url = 'https://school.globaltechsoftwaresolutions.cloud/api/grades/'
+                
+                # Prepare headers (in case authentication is needed)
+                headers = {
+                    'Content-Type': 'application/json',
+                }
+                
+                # Try to get authentication token from request if available
+                if hasattr(self, 'request') and hasattr(self.request, 'META'):
+                    auth_header = self.request.META.get('HTTP_AUTHORIZATION')
+                    if auth_header:
+                        headers['Authorization'] = auth_header
+                
+                print(f"[DEBUG] Making request to {grades_api_url}")
+                try:
+                    response = requests.post(grades_api_url, json=grade_data, headers=headers, timeout=30)
+                    if response.status_code == 201:
+                        print(f"✅ Successfully sent results to grades API: {response.status_code}")
+                        print(f"Response: {response.json()}")
+                    else:
+                        print(f"❌ Failed to send results to grades API. Status: {response.status_code}")
+                        print(f"Response: {response.text}")
+                        # Also print headers for debugging
+                        print(f"Response headers: {dict(response.headers)}")
+                except requests.RequestException as e:
+                    print(f"❌ Network error making request to grades API: {str(e)}")
+                except Exception as e:
+                    print(f"❌ Unexpected error sending to grades API: {str(e)}")
+                
+            else:
+                print("[DEBUG] No questions found for this exam")
+                
+        except Exception as e:
+            # Log error but don't fail the request
+            print(f"❌ Error sending results to grades: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def destroy(self, request, *args, **kwargs):
+        # For MCQ, only allow creation, not deletion
+        return Response({'detail': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+# Custom view for submitting multiple MCQ answers at once
+@api_view(['PATCH'])
+@permission_classes([AllowAny])
+def submit_multiple_mcq_answers(request):
+    """Submit multiple MCQ answers in a single request"""
+    try:
+        # Extract answers data
+        answers_data = request.data.get('answers', [])
+        exam_id = request.data.get('exam_id')
+        
+        if not answers_data or not exam_id:
+            return Response(
+                {'error': 'Both exam_id and answers are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Process each answer
+        updated_answers = []
+        for answer_data in answers_data:
+            mcq_id = answer_data.get('id')
+            student_answer = answer_data.get('student_answer')
+            
+            if not mcq_id or student_answer is None:
+                continue
+                
+            try:
+                # Get the MCQ instance
+                mcq = MCQ_Answers.objects.get(id=mcq_id, exam_id=exam_id)
+                
+                # Update the student answer
+                mcq.student_answer = student_answer
+                
+                # Calculate result
+                mcq.result = (mcq.student_answer == mcq.correct_option)
+                
+                # Save the updated MCQ
+                mcq.save()
+                
+                updated_answers.append({
+                    'id': mcq.id,  # pyright: ignore[reportAttributeAccessIssue]
+                    'question': mcq.question[:50],
+                    'student_answer': mcq.student_answer,
+                    'result': mcq.result
+                })
+                
+            except MCQ_Answers.DoesNotExist:
+                continue
+        
+        # Send results to grades table after all answers are processed
+        if updated_answers:
+            # Get the first MCQ to use for grade submission
+            first_mcq = MCQ_Answers.objects.get(id=answers_data[0]['id'], exam_id=exam_id)
+            viewset = MCQAnswersViewSet()
+            viewset._send_results_to_grades(first_mcq)
+        
+        return Response({
+            'message': f'Successfully updated {len(updated_answers)} answers',
+            'updated_answers': updated_answers
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# Custom view for submitting MCQ answers (POST only)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_mcq_answers(request):
+    serializer = MCQAnswersCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Custom view for fetching MCQ answers (GET only)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_mcq_answers(request, pk):
+    try:
+        mcq_answer = MCQ_Answers.objects.get(pk=pk)
+        serializer = MCQAnswersSerializer(mcq_answer)
+        return Response(serializer.data)
+    except MCQ_Answers.DoesNotExist:
+        return Response({'detail': 'MCQ answer not found'}, status=status.HTTP_404_NOT_FOUND)
