@@ -463,7 +463,7 @@ class AwardSerializer(serializers.ModelSerializer):
 class AssignmentSerializer(serializers.ModelSerializer):
     subject_name = serializers.CharField(source='subject.subject_name', read_only=True, allow_null=True)
     class_name = serializers.CharField(source='class_id.class_name', read_only=True, allow_null=True)
-    section = serializers.CharField(source='class_id.sec', read_only=True, allow_null=True)
+    sec = serializers.CharField(source='class_id.sec', read_only=True, allow_null=True)
     assigned_by_email = serializers.EmailField(source='assigned_by.email', read_only=True, allow_null=True)
     assigned_by_name = serializers.SerializerMethodField()
 
