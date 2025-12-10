@@ -818,6 +818,7 @@ class ExamCreateSerializer(serializers.ModelSerializer):
         exam = Exam.objects.create(**validated_data)
         
         # Create MCQ records for each question
+        # Initially, these won't have student answers
         for question_data in questions_data:
             MCQ_Answers.objects.create(exam=exam, **question_data)
             
@@ -839,6 +840,7 @@ class ExamCreateSerializer(serializers.ModelSerializer):
 # ------------------- MCQ ANSWERS SERIALIZERS -------------------
 class MCQAnswersSerializer(serializers.ModelSerializer):
     exam_details = ExamSerializer(source='exam', read_only=True)
+    student_email = serializers.EmailField(source='student.email', read_only=True)
     
     class Meta:
         model = MCQ_Answers
@@ -849,6 +851,11 @@ class MCQAnswersCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = MCQ_Answers
         fields = '__all__'
+        read_only_fields = ('result',)
+    
+    def to_representation(self, instance):
+        # Use the regular serializer for output to include nested data
+        return MCQAnswersSerializer(instance).data
     
     def validate(self, attrs):
         # Auto-set result field based on student_answer and correct_option comparison

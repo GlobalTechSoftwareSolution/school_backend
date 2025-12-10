@@ -4760,6 +4760,7 @@ class MCQAnswersViewSet(viewsets.ModelViewSet):
     def _send_results_to_grades(self, mcq_instance):
         """Send MCQ results to grades table"""
         print(f"[DEBUG] Starting _send_results_to_grades for MCQ instance {mcq_instance.id}")
+        print(f"[DEBUG] MCQ instance student: {mcq_instance.student}")
         try:
             # Calculate total marks for this exam
             total_questions = MCQ_Answers.objects.filter(exam=mcq_instance.exam).count()
@@ -4773,9 +4774,10 @@ class MCQAnswersViewSet(viewsets.ModelViewSet):
                 total_marks = 100
                 
                 # Prepare grade data
-                student_email = ""
-                if mcq_instance.exam.class_id.students.first():
-                    student_email = str(mcq_instance.exam.class_id.students.first().email.email)
+                if mcq_instance.student is None:
+                    print(f"[DEBUG] ERROR: MCQ instance has no student assigned!")
+                    return
+                student_email = str(mcq_instance.student.email.email)
                 
                 grade_data = {
                     'student': student_email,
@@ -4838,71 +4840,175 @@ class MCQAnswersViewSet(viewsets.ModelViewSet):
         return Response({'detail': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
-# Custom view for submitting multiple MCQ answers at once
-@api_view(['PATCH'])
+# Custom view for handling multiple MCQ answers
+
+@api_view(['GET', 'PATCH', 'DELETE'])
 @permission_classes([AllowAny])
-def submit_multiple_mcq_answers(request):
-    """Submit multiple MCQ answers in a single request"""
-    try:
-        # Extract answers data
-        answers_data = request.data.get('answers', [])
-        exam_id = request.data.get('exam_id')
-        
-        if not answers_data or not exam_id:
-            return Response(
-                {'error': 'Both exam_id and answers are required'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Process each answer
-        updated_answers = []
-        for answer_data in answers_data:
-            mcq_id = answer_data.get('id')
-            student_answer = answer_data.get('student_answer')
-            
-            if not mcq_id or student_answer is None:
-                continue
-                
-            try:
-                # Get the MCQ instance
-                mcq = MCQ_Answers.objects.get(id=mcq_id, exam_id=exam_id)
-                
-                # Update the student answer
-                mcq.student_answer = student_answer
-                
-                # Calculate result
-                mcq.result = (mcq.student_answer == mcq.correct_option)
-                
-                # Save the updated MCQ
-                mcq.save()
-                
-                updated_answers.append({
-                    'id': mcq.id,  # pyright: ignore[reportAttributeAccessIssue]
-                    'question': mcq.question[:50],
-                    'student_answer': mcq.student_answer,
-                    'result': mcq.result
-                })
-                
-            except MCQ_Answers.DoesNotExist:
-                continue
-        
-        # Send results to grades table after all answers are processed
-        if updated_answers:
-            # Get the first MCQ to use for grade submission
-            first_mcq = MCQ_Answers.objects.get(id=answers_data[0]['id'], exam_id=exam_id)
-            viewset = MCQAnswersViewSet()
-            viewset._send_results_to_grades(first_mcq)
-        
-        return Response({
-            'message': f'Successfully updated {len(updated_answers)} answers',
-            'updated_answers': updated_answers
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
+def submit_multiple_mcq_answers(request) -> Response:
+    """Handle MCQ answers for a specific exam - GET, PATCH, DELETE methods"""
+    
+    # For all methods, we need exam_id
+    exam_id = request.GET.get('exam_id') or request.data.get('exam_id')
+    if not exam_id:
         return Response(
-            {'error': str(e)}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            {'error': 'exam_id is required'}, 
+            status=status.HTTP_400_BAD_REQUEST
         )
+    
+    # Handle GET request - retrieve all MCQ answers for an exam
+    if request.method == 'GET':
+        try:
+            mcq_answers = MCQ_Answers.objects.filter(exam_id=exam_id)
+            if not mcq_answers.exists():
+                return Response(
+                    {'message': 'No MCQ answers found for this exam'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = MCQAnswersSerializer(mcq_answers, many=True)
+            return Response({
+                'exam_id': exam_id,
+                'mcq_answers': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    # Handle PATCH request - submit/update multiple MCQ answers
+    elif request.method == 'PATCH':
+        try:
+            # Extract answers data
+            answers_data = request.data.get('answers', [])
+            student_email = request.data.get('student_email')
+            
+            # Validate student email
+            if not student_email:
+                return Response(
+                    {'error': 'Student email is required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate that student exists
+            try:
+                student = Student.objects.get(email=student_email)
+            except Student.DoesNotExist:
+                return Response(
+                    {'error': 'Student not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            if not answers_data:
+                return Response(
+                    {'error': 'Answers data is required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Process each answer
+            updated_answers = []
+            for answer_data in answers_data:
+                mcq_id = answer_data.get('id')
+                student_answer = answer_data.get('student_answer')
+                
+                if not mcq_id or student_answer is None:
+                    continue
+                    
+                try:
+                    # Get the original MCQ instance (template)
+                    original_mcq = MCQ_Answers.objects.get(id=mcq_id, exam_id=exam_id)
+                    
+                    # Check if this student has already answered this question
+                    existing_answer = MCQ_Answers.objects.filter(
+                        exam_id=exam_id, 
+                        student=student, 
+                        question=original_mcq.question
+                    ).first()
+                    
+                    if existing_answer:
+                        # Update existing answer
+                        mcq = existing_answer
+                        mcq.student_answer = student_answer
+                        mcq.result = (mcq.student_answer == original_mcq.correct_option)
+                    else:
+                        # Create new answer record for this student
+                        mcq = MCQ_Answers.objects.create(
+                            exam=original_mcq.exam,
+                            student=student,
+                            question=original_mcq.question,
+                            option_1=original_mcq.option_1,
+                            option_2=original_mcq.option_2,
+                            option_3=original_mcq.option_3,
+                            option_4=original_mcq.option_4,
+                            correct_option=original_mcq.correct_option,
+                            student_answer=student_answer,
+                            result=(student_answer == original_mcq.correct_option)
+                        )
+                    
+                    print(f"[DEBUG] Created/updated MCQ with ID {mcq.id}, student: {mcq.student}")
+                    updated_answers.append({
+                        'id': mcq.id,  # pyright: ignore[reportAttributeAccessIssue]
+                        'question': mcq.question[:50],
+                        'student_email': student_email,
+                        'student_answer': mcq.student_answer,
+                        'result': mcq.result
+                    })
+                    
+                except MCQ_Answers.DoesNotExist:
+                    continue
+            
+            # Send results to grades table after all answers are processed
+            if updated_answers:
+                # Get the first MCQ to use for grade submission (the student-specific one)
+                first_mcq = MCQ_Answers.objects.get(id=updated_answers[0]['id'])
+                viewset = MCQAnswersViewSet()
+                viewset._send_results_to_grades(first_mcq)
+            
+            return Response({
+                'message': f'Successfully updated {len(updated_answers)} answers',
+                'exam_id': exam_id,
+                'updated_answers': updated_answers
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    # Handle DELETE request - delete all MCQ answers for an exam
+    elif request.method == 'DELETE':
+        try:
+            # Count how many records will be deleted
+            count = MCQ_Answers.objects.filter(exam_id=exam_id).count()
+            
+            if count == 0:
+                return Response(
+                    {'message': 'No MCQ answers found for this exam'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Delete all MCQ answers for this exam
+            MCQ_Answers.objects.filter(exam_id=exam_id).delete()
+            
+            return Response({
+                'message': f'Successfully deleted {count} MCQ answers for exam {exam_id}'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    # This should never be reached, but added for completeness
+    return Response(
+        {'error': 'Method not allowed'}, 
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+
+
 
 
 # Custom view for submitting MCQ answers (POST only)
@@ -4916,6 +5022,8 @@ def submit_mcq_answers(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+
+
 # Custom view for fetching MCQ answers (GET only)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4926,3 +5034,4 @@ def get_mcq_answers(request, pk):
         return Response(serializer.data)
     except MCQ_Answers.DoesNotExist:
         return Response({'detail': 'MCQ answer not found'}, status=status.HTTP_404_NOT_FOUND)
+

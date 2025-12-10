@@ -186,7 +186,7 @@ urlpatterns = [
     # MCQ Answers
     # path('mcq_answers/', views.MCQAnswersViewSet.as_view({'post': 'create'}), name='mcq-answers-list'),
     # path('mcq_answers/<int:pk>/', views.MCQAnswersViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update'}), name='mcq-answers-detail'),
-    # path('submit_mcq/', views.submit_mcq_answers, name='submit-mcq'),
+    path('submit_mcq/', views.submit_mcq_answers, name='submit-mcq'),
     path('submit_multiple_mcq/', views.submit_multiple_mcq_answers, name='submit-multiple-mcq'),
-    # path('get_mcq/<int:pk>/', views.get_mcq_answers, name='get-mcq'),
+    path('get_mcq/<int:pk>/', views.get_mcq_answers, name='get-mcq'),
 ]

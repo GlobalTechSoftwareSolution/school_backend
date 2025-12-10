@@ -1002,6 +1002,7 @@ class Exam(models.Model):
 # ------------------- MCQ ANSWERS -------------------
 class MCQ_Answers(models.Model):
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='mcq_answers')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, to_field='email', related_name='mcq_answers', null=True, blank=True)
     question = models.TextField()
     option_1 = models.TextField()
     option_2 = models.TextField()
