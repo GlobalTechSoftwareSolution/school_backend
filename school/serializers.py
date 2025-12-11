@@ -792,10 +792,19 @@ class ExamSerializer(serializers.ModelSerializer):
     section = serializers.CharField(source='class_id.sec', read_only=True)
     subject_name = serializers.CharField(source='sub.subject_name', read_only=True)
     teacher_name = serializers.CharField(source='sub_teacher.fullname', read_only=True)
+    sub_teacher_email = serializers.EmailField(source='sub_teacher.email.email', read_only=True)
+    mcq_answers = serializers.SerializerMethodField()
+    
+    def get_mcq_answers(self, obj):
+        # Import here to avoid circular imports
+        from .models import MCQ_Answers
+        mcq_answers = MCQ_Answers.objects.filter(exam=obj, student__isnull=True)  # Only template questions
+        return MCQAnswersSerializer(mcq_answers, many=True).data
     
     class Meta:
         model = Exam
-        fields = '__all__'
+        fields = ['id', 'title', 'class_id', 'sub', 'sub_teacher_email', 'class_name', 'section', 'subject_name', 'teacher_name', 'mcq_answers']
+        read_only_fields = ['class_id', 'sub']  # Make foreign keys read-only
 
 
 class ExamCreateSerializer(serializers.ModelSerializer):
@@ -808,7 +817,17 @@ class ExamCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Exam
-        fields = '__all__'
+        fields = ['id', 'title', 'class_id', 'sub', 'sub_teacher', 'questions']
+        
+    def validate_sub_teacher(self, value):
+        # If value is a string (email), get the Teacher object
+        if isinstance(value, str):
+            try:
+                from .models import Teacher
+                return Teacher.objects.get(email=value)
+            except Teacher.DoesNotExist:
+                raise serializers.ValidationError(f"Teacher with email {value} does not exist.")
+        return value  # If it's already a Teacher object, return as is
         
     def create(self, validated_data):
         # Extract questions data
@@ -839,18 +858,31 @@ class ExamCreateSerializer(serializers.ModelSerializer):
 
 # ------------------- MCQ ANSWERS SERIALIZERS -------------------
 class MCQAnswersSerializer(serializers.ModelSerializer):
-    exam_details = ExamSerializer(source='exam', read_only=True)
+    exam_details = serializers.SerializerMethodField()
     student_email = serializers.EmailField(source='student.email', read_only=True)
     
     class Meta:
         model = MCQ_Answers
-        fields = '__all__'
+        fields = ['id', 'question', 'option_1', 'option_2', 'option_3', 'option_4', 'correct_option', 'student_answer', 'result', 'exam_details', 'student_email']
+        read_only_fields = ['exam']  # Exclude exam field from serialization to avoid circular reference
+    
+    def get_exam_details(self, obj):
+        # Simplified exam details to avoid circular reference
+        if obj.exam:
+            return {
+                'id': obj.exam.id,
+                'title': obj.exam.title,
+                'class_id': obj.exam.class_id.id if obj.exam.class_id else None,
+                'sub': obj.exam.sub.id if obj.exam.sub else None,
+                'sub_teacher_email': obj.exam.sub_teacher.email.email if obj.exam.sub_teacher and obj.exam.sub_teacher.email else None
+            }
+        return None
 
 
 class MCQAnswersCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = MCQ_Answers
-        fields = '__all__'
+        fields = ['id', 'exam', 'student', 'question', 'option_1', 'option_2', 'option_3', 'option_4', 'correct_option', 'student_answer']
         read_only_fields = ('result',)
     
     def to_representation(self, instance):

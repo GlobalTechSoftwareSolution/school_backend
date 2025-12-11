@@ -4919,7 +4919,7 @@ def submit_multiple_mcq_answers(request) -> Response:
                     # Get the original MCQ instance (template)
                     original_mcq = MCQ_Answers.objects.get(id=mcq_id, exam_id=exam_id)
                     
-                    # Check if this student has already answered this question
+                    # Check if this specific student has already answered this question
                     existing_answer = MCQ_Answers.objects.filter(
                         exam_id=exam_id, 
                         student=student, 
@@ -4927,26 +4927,42 @@ def submit_multiple_mcq_answers(request) -> Response:
                     ).first()
                     
                     if existing_answer:
-                        # Update existing answer
+                        # Update existing answer for this student
                         mcq = existing_answer
                         mcq.student_answer = student_answer
                         mcq.result = (mcq.student_answer == original_mcq.correct_option)
+                        mcq.save()
                     else:
-                        # Create new answer record for this student
-                        mcq = MCQ_Answers.objects.create(
-                            exam=original_mcq.exam,
-                            student=student,
-                            question=original_mcq.question,
-                            option_1=original_mcq.option_1,
-                            option_2=original_mcq.option_2,
-                            option_3=original_mcq.option_3,
-                            option_4=original_mcq.option_4,
-                            correct_option=original_mcq.correct_option,
-                            student_answer=student_answer,
-                            result=(student_answer == original_mcq.correct_option)
-                        )
+                        # Check if any student has answered this question yet
+                        existing_answers_for_question = MCQ_Answers.objects.filter(
+                            exam_id=exam_id, 
+                            student__isnull=False,  # Only count answers with actual students
+                            question=original_mcq.question  # Only for this specific question
+                        ).count()
+                        
+                        if existing_answers_for_question == 0:
+                            # First student for this question - reuse the template record
+                            mcq = original_mcq
+                            mcq.student = student
+                            mcq.student_answer = student_answer
+                            mcq.result = (student_answer == original_mcq.correct_option)
+                            mcq.save()
+                        else:
+                            # Subsequent students for this question - create new records
+                            mcq = MCQ_Answers.objects.create(
+                                exam=original_mcq.exam,
+                                student=student,
+                                question=original_mcq.question,
+                                option_1=original_mcq.option_1,
+                                option_2=original_mcq.option_2,
+                                option_3=original_mcq.option_3,
+                                option_4=original_mcq.option_4,
+                                correct_option=original_mcq.correct_option,
+                                student_answer=student_answer,
+                                result=(student_answer == original_mcq.correct_option)
+                            )
                     
-                    print(f"[DEBUG] Created/updated MCQ with ID {mcq.id}, student: {mcq.student}")
+                    print(f"[DEBUG] Created/updated MCQ with ID {mcq.id}, student: {mcq.student}")  # pyright: ignore[reportAttributeAccessIssue]
                     updated_answers.append({
                         'id': mcq.id,  # pyright: ignore[reportAttributeAccessIssue]
                         'question': mcq.question[:50],
