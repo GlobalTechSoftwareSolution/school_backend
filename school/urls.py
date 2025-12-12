@@ -189,4 +189,5 @@ urlpatterns = [
     path('submit_mcq/', views.submit_mcq_answers, name='submit-mcq'),
     path('submit_multiple_mcq/', views.submit_multiple_mcq_answers, name='submit-multiple-mcq'),
     path('get_mcq/<int:pk>/', views.get_mcq_answers, name='get-mcq'),
+    path('get_all_mcq/', views.get_all_mcq_answers, name='get-all-mcq'),
 ]

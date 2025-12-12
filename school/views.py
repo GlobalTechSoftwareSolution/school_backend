@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status, filters
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -5050,4 +5051,46 @@ def get_mcq_answers(request, pk):
         return Response(serializer.data)
     except MCQ_Answers.DoesNotExist:
         return Response({'detail': 'MCQ answer not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# Custom view for fetching all MCQ answers
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_all_mcq_answers(request):
+    """
+    Fetch all MCQ answers from the database with conditional pagination.
+    If pagination parameters (page, page_size) are provided, apply pagination;
+    otherwise, return all records.
+    """
+    try:
+        # Get all MCQ answers
+        mcq_answers = MCQ_Answers.objects.all().order_by('id')
+        
+        # Check if pagination parameters are provided
+        page = request.query_params.get('page', None)
+        page_size = request.query_params.get('page_size', None)
+        
+        # Apply pagination if both parameters are provided
+        if page is not None and page_size is not None:
+            # Apply pagination if parameters are provided
+            from .pagination import CustomPageNumberPagination
+            paginator = CustomPageNumberPagination()
+            paginator.page_size = int(page_size)
+            paginated_mcq_answers = paginator.paginate_queryset(mcq_answers, request)
+            serializer = MCQAnswersSerializer(paginated_mcq_answers, many=True)
+            return paginator.get_paginated_response({
+                'mcq_answers': serializer.data
+            })
+        else:
+            # Return all records without pagination
+            serializer = MCQAnswersSerializer(mcq_answers, many=True)
+            return Response({
+                'mcq_answers': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
