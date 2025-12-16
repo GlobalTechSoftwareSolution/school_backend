@@ -4901,6 +4901,17 @@ def submit_multiple_mcq_answers(request) -> Response:
                     status=status.HTTP_404_NOT_FOUND
                 )
             
+            # Check if student has already attempted this exam
+            existing_attempt = MCQ_Answers.objects.filter(
+                exam_id=exam_id, 
+                student=student
+            ).exists()
+            
+            if existing_attempt:
+                return Response(
+                    {'error': 'Student has already attempted this exam'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )            
             if not answers_data:
                 return Response(
                     {'error': 'Answers data is required'}, 
@@ -4934,35 +4945,19 @@ def submit_multiple_mcq_answers(request) -> Response:
                         mcq.result = (mcq.student_answer == original_mcq.correct_option)
                         mcq.save()
                     else:
-                        # Check if any student has answered this question yet
-                        existing_answers_for_question = MCQ_Answers.objects.filter(
-                            exam_id=exam_id, 
-                            student__isnull=False,  # Only count answers with actual students
-                            question=original_mcq.question  # Only for this specific question
-                        ).count()
-                        
-                        if existing_answers_for_question == 0:
-                            # First student for this question - reuse the template record
-                            mcq = original_mcq
-                            mcq.student = student
-                            mcq.student_answer = student_answer
-                            mcq.result = (student_answer == original_mcq.correct_option)
-                            mcq.save()
-                        else:
-                            # Subsequent students for this question - create new records
-                            mcq = MCQ_Answers.objects.create(
-                                exam=original_mcq.exam,
-                                student=student,
-                                question=original_mcq.question,
-                                option_1=original_mcq.option_1,
-                                option_2=original_mcq.option_2,
-                                option_3=original_mcq.option_3,
-                                option_4=original_mcq.option_4,
-                                correct_option=original_mcq.correct_option,
-                                student_answer=student_answer,
-                                result=(student_answer == original_mcq.correct_option)
-                            )
-                    
+                        # For a new student attempt, always create new records
+                        mcq = MCQ_Answers.objects.create(
+                            exam=original_mcq.exam,
+                            student=student,
+                            question=original_mcq.question,
+                            option_1=original_mcq.option_1,
+                            option_2=original_mcq.option_2,
+                            option_3=original_mcq.option_3,
+                            option_4=original_mcq.option_4,
+                            correct_option=original_mcq.correct_option,
+                            student_answer=student_answer,
+                            result=(student_answer == original_mcq.correct_option)
+                        )                    
                     print(f"[DEBUG] Created/updated MCQ with ID {mcq.id}, student: {mcq.student}")  # pyright: ignore[reportAttributeAccessIssue]
                     updated_answers.append({
                         'id': mcq.id,  # pyright: ignore[reportAttributeAccessIssue]

@@ -865,10 +865,10 @@ class Program(models.Model):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     coordinator = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, to_field='email', related_name='programs_coordinated')
+    coordinator_name = models.CharField(max_length=255, null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Planned')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ['-created_at']
 
@@ -1011,6 +1011,9 @@ class MCQ_Answers(models.Model):
     correct_option = models.IntegerField(choices=[(1, 'Option 1'), (2, 'Option 2'), (3, 'Option 3'), (4, 'Option 4')])
     student_answer = models.IntegerField(choices=[(1, 'Option 1'), (2, 'Option 2'), (3, 'Option 3'), (4, 'Option 4')], null=True, blank=True)
     result = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('exam', 'student')
 
     def __str__(self):
         return f"MCQ for Exam {self.exam.exam_id} - Question: {self.question[:50]}..."

@@ -585,7 +585,6 @@ class ProjectSerializer(serializers.ModelSerializer):
 # ------------------- PROGRAM -------------------
 class ProgramSerializer(serializers.ModelSerializer):
     coordinator_email = serializers.EmailField(source='coordinator.email', read_only=True, allow_null=True)
-    coordinator_name = serializers.SerializerMethodField()
     # Add writable fields for coordinator updates
     coordinator = serializers.EmailField(write_only=True, required=False, allow_null=True)
     coordinator_email_input = serializers.EmailField(write_only=True, required=False, allow_null=True)
@@ -594,26 +593,26 @@ class ProgramSerializer(serializers.ModelSerializer):
         model = Program
         fields = ['id', 'name', 'description', 'start_date', 'end_date', 'coordinator', 'coordinator_email_input', 'status', 'created_at', 'updated_at', 'coordinator_email', 'coordinator_name']
 
-    def get_coordinator_name(self, obj):
-        if obj.coordinator:
+    def _get_coordinator_name(self, coordinator_user):
+        """Helper method to get coordinator name from user profile"""
+        if coordinator_user:
             # Try to get the name from the related user profile
-            if hasattr(obj.coordinator, 'admin') and obj.coordinator.admin:
-                return obj.coordinator.admin.fullname
-            elif hasattr(obj.coordinator, 'teacher') and obj.coordinator.teacher:
-                return obj.coordinator.teacher.fullname
-            elif hasattr(obj.coordinator, 'principal') and obj.coordinator.principal:
-                return obj.coordinator.principal.fullname
-            elif hasattr(obj.coordinator, 'management') and obj.coordinator.management:
-                return obj.coordinator.management.fullname
-            elif hasattr(obj.coordinator, 'student') and obj.coordinator.student:
-                return obj.coordinator.student.fullname
-            elif hasattr(obj.coordinator, 'parent') and obj.coordinator.parent:
-                return obj.coordinator.parent.fullname
+            if hasattr(coordinator_user, 'admin') and coordinator_user.admin:
+                return coordinator_user.admin.fullname
+            elif hasattr(coordinator_user, 'teacher') and coordinator_user.teacher:
+                return coordinator_user.teacher.fullname
+            elif hasattr(coordinator_user, 'principal') and coordinator_user.principal:
+                return coordinator_user.principal.fullname
+            elif hasattr(coordinator_user, 'management') and coordinator_user.management:
+                return coordinator_user.management.fullname
+            elif hasattr(coordinator_user, 'student') and coordinator_user.student:
+                return coordinator_user.student.fullname
+            elif hasattr(coordinator_user, 'parent') and coordinator_user.parent:
+                return coordinator_user.parent.fullname
             else:
                 # Fallback to email if no name found
-                return obj.coordinator.email
+                return coordinator_user.email
         return None
-
     def update(self, instance, validated_data):
         # Handle coordinator updates from either field
         coordinator_email = validated_data.pop('coordinator', None)
@@ -627,10 +626,13 @@ class ProgramSerializer(serializers.ModelSerializer):
                 try:
                     coordinator_user = User.objects.get(email=update_email)
                     instance.coordinator = coordinator_user
+                    # Set coordinator_name from the user profile
+                    instance.coordinator_name = self._get_coordinator_name(coordinator_user)
                 except User.DoesNotExist:
                     raise serializers.ValidationError({'coordinator': f'User with email {update_email} does not exist.'})
             else:
                 instance.coordinator = None
+                instance.coordinator_name = None
         
         return super().update(instance, validated_data)
 
@@ -649,15 +651,17 @@ class ProgramSerializer(serializers.ModelSerializer):
                 try:
                     coordinator_user = User.objects.get(email=update_email)
                     instance.coordinator = coordinator_user
+                    # Set coordinator_name from the user profile
+                    instance.coordinator_name = self._get_coordinator_name(coordinator_user)
                     instance.save()
                 except User.DoesNotExist:
                     raise serializers.ValidationError({'coordinator': f'User with email {update_email} does not exist.'})
             else:
                 instance.coordinator = None
+                instance.coordinator_name = None
                 instance.save()
         
         return instance
-
 
 # ------------------- ACTIVITY -------------------
 class ActivitySerializer(serializers.ModelSerializer):
