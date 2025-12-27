@@ -53,7 +53,7 @@ urlpatterns = [
     
     # Management
     path('management/', views.ManagementViewSet.as_view({'get': 'list', 'post': 'create'}), name='management-list'),
-    path('management/<str:pk>/', views.ManagementViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='management-detail'),
+    path('management/<str:pk>', views.ManagementViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='management-detail'),
     
     # Admins
     path('admins/', views.AdminViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-list'),

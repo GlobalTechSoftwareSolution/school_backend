@@ -57,6 +57,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# Disable APPEND_SLASH to prevent redirect issues with PATCH/PUT requests
+APPEND_SLASH = False
+
 
 ROOT_URLCONF = 'school_backend.urls'
 
@@ -182,9 +185,9 @@ MINIO_STORAGE = {
     "ACCESS_KEY": config('MINIO_ACCESS_KEY'),
     "SECRET_KEY": config('MINIO_SECRET_KEY'),
     "BUCKET_NAME": config('MINIO_BUCKET_NAME'),
-    "USE_SSL": config('MINIO_USE_SSL', default=True, cast=bool),
+    "USE_SSL": config('MINIO_USE_SSL', default=False, cast=bool),
 }
-BASE_BUCKET_URL = config('BASE_BUCKET_URL', default="https://minio.globaltechsoftwaresolutions.cloud:9000/school-media/")
+BASE_BUCKET_URL = config('BASE_BUCKET_URL', default="https://minio.globaltechsoftwaresolutions.cloud/school-media/")
 
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/chat/'
