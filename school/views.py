@@ -4901,17 +4901,15 @@ def submit_multiple_mcq_answers(request) -> Response:
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Check if student has already attempted this exam
-            existing_attempt = MCQ_Answers.objects.filter(
-                exam_id=exam_id, 
-                student=student
-            ).exists()
-            
-            if existing_attempt:
+            # Check if student has already completed this exam (answered all questions)
+            total_questions_in_exam = MCQ_Answers.objects.filter(exam_id=exam_id, student__isnull=True).count()
+            answered_questions = MCQ_Answers.objects.filter(exam_id=exam_id, student=student).count()
+
+            if answered_questions >= total_questions_in_exam and total_questions_in_exam > 0:
                 return Response(
-                    {'error': 'Student has already attempted this exam'}, 
+                    {'error': 'You have already completed this exam and cannot submit answers again'}, 
                     status=status.HTTP_400_BAD_REQUEST
-                )            
+                )
             if not answers_data:
                 return Response(
                     {'error': 'Answers data is required'}, 
@@ -5088,4 +5086,3 @@ def get_all_mcq_answers(request):
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-

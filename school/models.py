@@ -1013,7 +1013,7 @@ class MCQ_Answers(models.Model):
     result = models.BooleanField(default=False)
 
     class Meta:
-        unique_together = ('exam', 'student')
+        unique_together = ('exam', 'student', 'question')
 
     def __str__(self):
         return f"MCQ for Exam {self.exam.exam_id} - Question: {self.question[:50]}..."
